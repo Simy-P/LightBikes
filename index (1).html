@@ -13,6 +13,13 @@ canvas{display:block}
 #spd{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;pointer-events:none;text-align:center;font-size:13px;letter-spacing:2px;color:#9fefff;text-shadow:0 0 8px #2fd8ff}
 #bar{width:220px;height:8px;border:1px solid #2fd8ff;border-radius:4px;margin-top:6px;overflow:hidden}#bar i{display:block;height:100%;background:linear-gradient(90deg,#2fd8ff,#fff);width:30%}
 #mini{position:fixed;left:50%;bottom:62px;transform:translateX(-50%);width:clamp(110px,26vw,150px);height:clamp(110px,26vw,150px);display:none;pointer-events:none;border-radius:6px}
+.panel{display:flex;flex-direction:column;align-items:center;gap:12px}
+#tag{font-family:inherit;font-size:16px;letter-spacing:3px;text-transform:uppercase;padding:11px 14px;width:170px;border-radius:10px;border:2px solid #2fd8ff;background:#001018;color:#dffaff;outline:none;text-align:center}
+.plist{display:flex;flex-direction:column;gap:8px;min-width:240px;max-height:38vh;overflow:auto}
+#dlg{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000c;z-index:20;text-align:center;padding:20px;box-sizing:border-box}
+#dtext{font-size:clamp(20px,5vw,34px);font-weight:800;letter-spacing:3px;text-shadow:0 0 14px #2fd8ff}#dtext small{display:block;font-size:14px;font-weight:500;margin-top:8px;opacity:.85}
+#dsub{font-size:13px;letter-spacing:2px;opacity:.85;min-height:16px}
+#mpBar{position:fixed;top:36px;right:12px;display:none;gap:8px;z-index:5}
 #mini.corner{left:14px;bottom:14px;transform:none}
 #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;text-align:center}
 #msg .m{font-size:clamp(30px,9vw,84px);font-weight:800;letter-spacing:6px;text-shadow:0 0 24px currentColor}
@@ -45,16 +52,31 @@ button.small{padding:8px 14px;font-size:13px}
 </div>
 <div id="menu">
   <h1>LIGHT<span>BIKES</span></h1>
-  <p>Ride the grid. Your bike leaves a wall of light. Make the red riders crash into your trail and don't touch any wall yourself. Grab a gold pickup to wipe every trail off the grid. Win to unlock the next of 10 levels. The faster you go, the taller your humps.</p>
-  <div class="row"><button class="small" data-d="easy">EASY</button><button class="small sel" data-d="normal">NORMAL</button><button class="small red" data-d="hard">HARD</button></div>
-  <div class="row"><button class="small" id="lvDn">◀</button><span id="lvl" style="min-width:150px;letter-spacing:3px;font-size:18px">LEVEL 1</span><button class="small" id="lvUp">▶</button></div>
-  <div id="lvInfo" style="font-size:12px;letter-spacing:1px;opacity:.8"></div>
-  <div class="row"><button class="small" id="mus">MUSIC: ON</button></div>
-  <div class="row"><button id="play">RACE</button><button id="vr" style="display:none">ENTER VR</button></div>
-  <p id="keys">Keyboard: ← → (or A/D) turn 90° · ↑/W faster · ↓/S slower · C camera · Space restart · M music<br>
-  Quest: flick either thumbstick or squeeze a grip to turn · right trigger / stick up = faster · left trigger / stick down = slower · B/Y camera · A/X restart</p>
-  <div id="note"></div>
+  <div id="pMode" class="panel">
+    <p>Ride the grid. Your bike leaves a wall of light. Make your rivals crash into your trail and don't touch any wall yourself. Grab a gold pickup to wipe every trail off the grid. The faster you go, the taller your humps.</p>
+    <div class="row"><button id="b1p">1 PLAYER</button><button id="b2p" class="red">2 PLAYER</button></div>
+    <div class="row"><button class="small" id="mus">MUSIC: ON</button></div>
+  </div>
+  <div id="p1" class="panel" style="display:none">
+    <div class="row"><button class="small" data-d="easy">EASY</button><button class="small sel" data-d="normal">NORMAL</button><button class="small red" data-d="hard">HARD</button></div>
+    <div class="row"><button class="small" id="lvDn">◀</button><span id="lvl" style="min-width:150px;letter-spacing:3px;font-size:18px">LEVEL 1</span><button class="small" id="lvUp">▶</button></div>
+    <div id="lvInfo" style="font-size:12px;letter-spacing:1px;opacity:.8"></div>
+    <div class="row"><button id="play">RACE</button><button id="vr" style="display:none">ENTER VR</button></div>
+    <p id="keys">Keyboard: ← → (or A/D) turn 90° · ↑/W faster · ↓/S slower · C camera · Space restart · M music<br>
+    Quest: flick either thumbstick or squeeze a grip to turn · right trigger / stick up = faster · left trigger / stick down = slower · B/Y camera · A/X restart</p>
+    <div id="note"></div>
+    <button class="small" id="back1">◀ BACK</button>
+  </div>
+  <div id="p2" class="panel" style="display:none">
+    <p>Pick your bike tag and enter the lobby. Tap another rider to challenge them. If they accept, you host the game.</p>
+    <div class="row"><input id="tag" maxlength="12" placeholder="BIKE TAG" autocomplete="off" spellcheck="false"><button id="joinL">ENTER LOBBY</button></div>
+    <div id="lstat" style="font-size:12px;letter-spacing:1px;opacity:.85"></div>
+    <div id="plist" class="plist"></div>
+    <button class="small" id="back2">◀ BACK</button>
+  </div>
 </div>
+<div id="dlg"><div id="dtext"></div><div id="dsub"></div><div class="row" id="dbtns"></div></div>
+<div id="mpBar"><button class="small" id="vrIn" style="display:none">VR</button><button class="small red" id="leaveBtn">LEAVE</button></div>
 <script type="module">
 import * as THREE from 'three';
 
@@ -375,6 +397,11 @@ function spawnPickups(n) {
     if (Math.abs(x) < 8 || Math.abs(z) < 8) continue; // keep off the opening lanes
     if (starts.some(s => Math.hypot(s.x - x, s.y - z) < 40)) continue;
     if (pickups.some(p => Math.hypot(p.pos.x - x, p.pos.y - z) < 70)) continue;
+    addPickup(x, z);
+  }
+}
+function addPickup(x, z) {
+  {
     const g = new THREE.Group(); g.position.set(x, 1.8, z);
     const core = new THREE.Mesh(pkGeo, pkMat), edge = new THREE.LineSegments(pkEdge, pkLine), inner = new THREE.LineSegments(pkEdge, pkLine);
     inner.scale.setScalar(0.5); core.add(edge); g.add(core, inner);
@@ -401,7 +428,10 @@ function segPointDist(ax, az, bx, bz, px, pz) {
 function checkPickups(b, ox, oz) {
   for (const p of pickups) {
     if (!p.live) continue;
-    if (segPointDist(ox, oz, b.pos.x, b.pos.y, p.pos.x, p.pos.y) < 3.2) { p.live = false; scene.remove(p.g); gridWipe(p, b); }
+    if (segPointDist(ox, oz, b.pos.x, b.pos.y, p.pos.x, p.pos.y) < 3.2) {
+      p.live = false; scene.remove(p.g);
+      if (mode === 'host') net.send({ type: 'ev', k: 'wipe', pk: pickups.indexOf(p), who: bikes.indexOf(b) }, opp);
+      gridWipe(p, b); }
   }
 }
 function gridWipe(p, who) {
@@ -417,7 +447,7 @@ function gridWipe(p, who) {
     parts.push({ m: ring, mat: ring.material, ring: true, wipe: true, life: 1.2 + i * 0.15, v: new THREE.Vector3() });
   }
   sfxWipe(who.isPlayer);
-  setMsg('GRID WIPE', who.isPlayer ? 'All trails cleared!' : 'A red rider wiped the grid!', '#ffe27a', 1.4);
+  setMsg('GRID WIPE', who.isPlayer ? 'All trails cleared!' : (mode === 'solo' ? 'A red rider' : (who === bikes[0] ? tags.blue : tags.red)) + ' wiped the grid!', '#ffe27a', 1.4);
 }
 function sfxWipe(mine) {
   if (!actx) return; const t = actx.currentTime;
@@ -467,11 +497,13 @@ class Bike {
     this.points.push(this.pos.clone()); this.newSeg();
     this.yawT = yawOf(this.dir[0], this.dir[1]); this.roll = -side * 0.45;
     if (this.isPlayer) sfxTurn();
+    sendPts(this);
   }
   crash() {
     if (!this.alive) return;
     this.alive = false; this.mesh.visible = false;
     explode(this.pos.x, this.pos.y, this.color); sfxCrash(this.isPlayer);
+    if (mode === 'host') net.send({ type: 'ev', k: 'crash', i: bikes.indexOf(this), x: this.pos.x, z: this.pos.y }, opp);
     const n = this.points.length; this.setSeg(this.segs[n - 1], this.points[n - 1], this.pos.x, this.pos.y);
   }
   update(dt) {
@@ -681,6 +713,7 @@ const inp = { accel: false, brake: false };
 function setMsg(t, s = '', color = '#bff6ff', dur = 0) { msgText = t; subText = s; msgColor = color; msgT = dur; $('mm').textContent = t; $('ms').textContent = s; $('mm').style.color = color; }
 
 function startRound() {
+  tags = { blue: 'BLUE', red: 'RED' };
   clearParts(); for (const b of bikes) b.dispose(); bikes = [];
   player = new Bike(BLUE, true); player.reset(0, 200, 0, -1); bikes.push(player);
   const spawns = [[0, -200, 0, 1], [200, 0, -1, 0], [-200, 0, 1, 0]];
@@ -690,17 +723,24 @@ function startRound() {
   updCam();
   spawnPickups(3);
   rigYaw = player.visYaw; state = 'countdown'; cd = 3.0; lastBeep = 4;
+  showHud();
+}
+function showHud() {
   $('menu').style.display = 'none'; $('hud').style.display = 'flex'; $('spd').style.display = 'block'; if (!renderer.xr.isPresenting) { $('mini').style.display = 'block'; $('mini').classList.toggle('corner', !isTouch); } if (isTouch && !renderer.xr.isPresenting) $('touch').style.display = 'flex';
 }
 function endRound(text, color) { state = 'over'; overT = 0; setMsg(text, '', color); }
-function requestRestart() { if (state === 'over' && overT > 1.0) startRound(); }
-function doTurn(s) { if (state === 'play' && player && player.alive) player.turn(s); }
-function updCam() { $('cam').textContent = 'LV ' + level + ' · ' + (camMode === 'chase' ? 'CHASE' : 'COCKPIT'); }
+function requestRestart() { if (state !== 'over' || overT <= 1.0) return; if (mode === 'solo') startRound(); else wantRematch(); }
+function doTurn(s) {
+  if (state !== 'play' || !player || !player.alive) return;
+  if (mode === 'guest') { net.send({ type: 'in', turn: s }, opp); sfxTurn(); player.roll = -s * 0.45; } else player.turn(s);
+}
+function updCam() { $('cam').textContent = (mode === 'solo' ? 'LV ' + level : 'ONLINE') + ' · ' + (camMode === 'chase' ? 'CHASE' : 'COCKPIT'); }
 function toggleCam() { camMode = camMode === 'chase' ? 'cockpit' : 'chase'; updCam(); }
 
 // ---------- input: keyboard / touch ----------
 addEventListener('keydown', e => {
   if (e.repeat) return;
+  if (document.activeElement === $('tag') && e.key !== 'Enter') return;
   const k = e.key.toLowerCase();
   if (k === 'arrowleft' || k === 'a') doTurn(-1);
   if (k === 'arrowright' || k === 'd') doTurn(1);
@@ -708,7 +748,7 @@ addEventListener('keydown', e => {
   if (k === 'arrowdown' || k === 's') inp.brake = true;
   if (k === 'c') toggleCam();
   if (k === 'm') { initAudio(); setMusic(!M.on); }
-  if (k === ' ' || k === 'enter') { if (state === 'menu') { initAudio(); startRound(); } else requestRestart(); }
+  if (k === ' ' || k === 'enter') { if (document.activeElement === $('tag')) { joinLobby(); return; } if (state === 'menu') { if ($('p1').style.display !== 'none') { initAudio(); startRound(); } } else requestRestart(); }
 });
 addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
@@ -728,6 +768,13 @@ $('lvDn').onclick = () => { level = Math.max(1, level - 1); lvInfo(); };
 $('lvUp').onclick = () => { level = Math.min(best, level + 1); lvInfo(); };
 lvInfo();
 $('play').onclick = () => { initAudio(); startRound(); };
+$('b1p').onclick = () => { initAudio(); showPanel('p1'); };
+$('b2p').onclick = () => { initAudio(); showPanel('p2'); if (inLobby) renderLobby(); else if (myTag) $('lstat').textContent = 'Welcome back, ' + myTag + '.'; };
+$('back1').onclick = () => showPanel('pMode');
+$('back2').onclick = () => { inLobby = false; hello(); showPanel('pMode'); };
+$('joinL').onclick = joinLobby;
+$('leaveBtn').onclick = () => leaveMatch(true);
+$('vrIn').onclick = () => enterVR(false);
 $('mus').onclick = () => { initAudio(); setMusic(!M.on); };
 addEventListener('pointerdown', () => initAudio(), { once: true });
 if (isTouch) $('keys').innerHTML = 'Touch: ◀ ▶ turn 90° · ▲ ▼ speed · tap CHASE CAM to switch view · tap the screen to race again<br>' + $('keys').innerHTML.split('<br>')[1];
@@ -755,10 +802,11 @@ function readXR() {
 }
 if (navigator.xr && navigator.xr.isSessionSupported) {
   navigator.xr.isSessionSupported('immersive-vr').then(ok => {
-    if (ok) $('vr').style.display = ''; else $('note').textContent = 'VR not available in this view. On a Quest, open this page directly in the Quest browser.';
+    if (ok) { $('vr').style.display = ''; $('vrIn').style.display = ''; } else $('note').textContent = 'VR not available in this view. On a Quest, open this page directly in the Quest browser.';
   }).catch(() => {});
 } else $('note').textContent = 'No WebXR here. Open it in the Quest browser to ride in VR.';
-$('vr').onclick = async () => {
+$('vr').onclick = () => enterVR(true);
+async function enterVR(solo) {
   initAudio();
   try {
     const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
@@ -766,9 +814,9 @@ $('vr').onclick = async () => {
     try { renderer.xr.setFoveation(1); } catch (e) {}
     hudPlane.visible = true; mapPlane.visible = true; $('touch').style.display = 'none'; $('mini').style.display = 'none';
     s.addEventListener('end', () => { hudPlane.visible = false; mapPlane.visible = false; });
-    startRound();
+    if (solo) startRound();
   } catch (e) { $('note').textContent = 'Could not start VR: ' + e.message; }
-};
+}
 
 // ---------- minimap ----------
 const mini = $('mini'), mctx = mini.getContext('2d'), mapTex = new THREE.CanvasTexture(mini);
@@ -809,7 +857,7 @@ function drawHud() {
   const sp = player ? player.speed : 0, f = (sp - MIN_V) / (MAX_V - MIN_V);
   $('kmh').textContent = Math.round(sp * 3.6) + ' KM/H';
   $('bari').style.width = Math.max(0, Math.min(1, f)) * 100 + '%';
-  $('sb').textContent = 'BLUE ' + scoreB; $('sr').textContent = 'RED ' + scoreR;
+  $('sb').textContent = tags.blue + ' ' + scoreB; $('sr').textContent = tags.red + ' ' + scoreR;
   if (!hudPlane.visible) return;
   const c = hctx; c.clearRect(0, 0, 1024, 512); c.textAlign = 'center';
   if (msgText) {
@@ -818,53 +866,249 @@ function drawHud() {
     if (subText) { c.font = '500 40px Orbitron, sans-serif'; c.fillText(subText, 512, 235); }
   }
   c.shadowBlur = 12;
-  c.font = '500 30px Orbitron, sans-serif'; c.fillStyle = '#bff6ff'; c.shadowColor = '#2fd8ff'; c.fillText('LEVEL ' + level + ' · ' + diff.toUpperCase(), 512, 320);
+  c.font = '500 30px Orbitron, sans-serif'; c.fillStyle = '#bff6ff'; c.shadowColor = '#2fd8ff'; c.fillText(mode === 'solo' ? 'LEVEL ' + level + ' · ' + diff.toUpperCase() : 'ONLINE · VS ' + oppTag, 512, 320);
   c.font = '800 44px Orbitron, sans-serif';
-  c.fillStyle = '#5fe6ff'; c.shadowColor = '#2fd8ff'; c.textAlign = 'left'; c.fillText('BLUE ' + scoreB, 40, 470);
-  c.fillStyle = '#ff6a5a'; c.shadowColor = '#ff3a2a'; c.textAlign = 'right'; c.fillText('RED ' + scoreR, 984, 470);
+  c.fillStyle = '#5fe6ff'; c.shadowColor = '#2fd8ff'; c.textAlign = 'left'; c.fillText(tags.blue + ' ' + scoreB, 40, 470);
+  c.fillStyle = '#ff6a5a'; c.shadowColor = '#ff3a2a'; c.textAlign = 'right'; c.fillText(tags.red + ' ' + scoreR, 984, 470);
   c.textAlign = 'center'; c.fillStyle = '#dffaff'; c.shadowColor = '#2fd8ff'; c.fillText(Math.round(sp * 3.6) + ' KM/H', 512, 400);
   c.strokeStyle = '#2fd8ff'; c.lineWidth = 3; c.strokeRect(312, 425, 400, 22);
   c.fillStyle = '#9ff3ff'; c.fillRect(315, 428, 394 * Math.max(0, Math.min(1, f)), 16);
   hudTex.needsUpdate = true;
 }
 
+
+// ---------- two-player online (WebRTC via trystero, host-authoritative) ----------
+let mode = 'solo', net = null, opp = null, oppTag = '', myTag = '', inLobby = false, lobby = {}, pendingTo = null, pendingFrom = null, rival = null;
+let tags = { blue: 'BLUE', red: 'RED' }, inpR = { a: false, b: false }, snapT = 0, rm = { me: false, them: false }, rmShown = false, lastIn = '';
+try { myTag = localStorage.getItem('lb_tag') || ''; } catch (e) {}
+$('tag').value = myTag;
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function showPanel(id) { for (const p of ['pMode', 'p1', 'p2']) $(p).style.display = p === id ? 'flex' : 'none'; }
+function localNet(handler) { // same-browser test transport: open the page with #local in two tabs
+  const id = Math.random().toString(36).slice(2, 10), bc = new BroadcastChannel('lb-local');
+  bc.onmessage = e => { const m = e.data; if (m.from === id || (m.to && m.to !== id)) return;
+    if (m.k === 'join') { handler({ type: 'join' }, m.from); bc.postMessage({ k: 'ack', from: id, to: m.from }); }
+    else if (m.k === 'ack') handler({ type: 'join' }, m.from);
+    else if (m.k === 'leave') handler({ type: 'leave' }, m.from);
+    else handler(m.d, m.from); };
+  bc.postMessage({ k: 'join', from: id });
+  addEventListener('beforeunload', () => bc.postMessage({ k: 'leave', from: id }));
+  return { id, send: (d, to) => bc.postMessage({ k: 'm', from: id, to: to || null, d }), leave: () => bc.postMessage({ k: 'leave', from: id }) };
+}
+async function connectNet() {
+  if (net) return net;
+  const handler = (m, peer) => { try { onNet(m, peer); } catch (e) { console.error(e); } };
+  if (location.hash === '#local') { net = localNet(handler); return net; }
+  const T = await import('https://cdn.jsdelivr.net/npm/trystero@0.21.8/+esm');
+  const room = T.joinRoom({ appId: 'simy-p.github.io/LightBikes' }, 'lobby-v1');
+  const [snd, rcv] = room.makeAction('m');
+  rcv((d, p) => handler(d, p));
+  room.onPeerJoin(p => handler({ type: 'join' }, p));
+  room.onPeerLeave(p => handler({ type: 'leave' }, p));
+  net = { id: T.selfId, send: (d, to) => to ? snd(d, to) : snd(d), leave: () => room.leave() };
+  return net;
+}
+const isBusy = () => !inLobby || mode !== 'solo' || !!pendingTo || !!pendingFrom;
+function hello(to) { if (net && myTag) net.send({ type: 'hi', tag: myTag, busy: isBusy() }, to); }
+setInterval(() => { if (!net) return; hello(); const now = performance.now(); for (const id in lobby) if (now - lobby[id].seen > 13000) delete lobby[id]; renderLobby(); }, 4000);
+function renderLobby() {
+  if (!inLobby) return;
+  const L = $('plist'), ids = Object.keys(lobby); L.innerHTML = '';
+  $('lstat').textContent = ids.length ? 'You are ' + myTag + '. Tap a rider to challenge them:' : 'You are ' + myTag + '. Waiting for other riders to join…';
+  for (const id of ids) { const p = lobby[id], b = document.createElement('button');
+    b.className = 'small'; b.textContent = p.tag + (p.busy ? ' · busy' : ''); b.disabled = p.busy; if (p.busy) b.style.opacity = 0.45;
+    b.onclick = () => challenge(id); L.appendChild(b); }
+}
+function showDlg(html, btns, soft) {
+  $('dtext').innerHTML = html; $('dsub').textContent = ''; const d = $('dbtns'); d.innerHTML = '';
+  btns.forEach(([l, f], i) => { const b = document.createElement('button'); b.textContent = l; if (i) b.classList.add('red'); b.onclick = f; d.appendChild(b); });
+  $('dlg').style.background = soft ? '#0007' : '#000d'; $('dlg').style.display = 'flex';
+}
+function closeDlg() { $('dlg').style.display = 'none'; rmShown = false; }
+async function joinLobby() {
+  const t = $('tag').value.trim().toUpperCase().replace(/[^A-Z0-9 _-]/g, '').slice(0, 12);
+  if (!t) { $('lstat').textContent = 'Enter a bike tag first.'; return; }
+  myTag = t; $('tag').value = t; try { localStorage.setItem('lb_tag', t); } catch (e) {}
+  initAudio(); $('lstat').textContent = 'Connecting to the lobby…';
+  try { await connectNet(); inLobby = true; hello(); renderLobby(); $('joinL').textContent = 'UPDATE TAG'; }
+  catch (e) { $('lstat').textContent = "Couldn't reach the lobby. Online play needs the simy-p.github.io/LightBikes link and an internet connection."; }
+}
+function challenge(peer) {
+  if (!lobby[peer] || lobby[peer].busy || pendingTo) return;
+  pendingTo = peer; net.send({ type: 'ch', tag: myTag }, peer); hello();
+  showDlg('Waiting for ' + esc(lobby[peer].tag) + '<small>to accept your challenge…</small>', [['CANCEL', () => { net.send({ type: 'cx' }, peer); pendingTo = null; closeDlg(); hello(); }]]);
+}
+function acceptCh() { const p = pendingFrom; pendingFrom = null; closeDlg(); net.send({ type: 'ok', tag: myTag }, p); beginMatch('guest', p, lobby[p] ? lobby[p].tag : 'RIVAL'); }
+function onNet(m, peer) {
+  if (!m || !m.type) return;
+  switch (m.type) {
+    case 'join': hello(peer); break;
+    case 'leave':
+      delete lobby[peer]; renderLobby();
+      if (peer === opp) oppGone();
+      if (peer === pendingFrom) { pendingFrom = null; closeDlg(); }
+      if (peer === pendingTo) { pendingTo = null; showDlg('They left the lobby.', [['OK', closeDlg]]); }
+      break;
+    case 'hi': { const known = lobby[peer]; lobby[peer] = { tag: String(m.tag || '???').toUpperCase().slice(0, 12), busy: !!m.busy, seen: performance.now() }; if (!known) hello(peer); renderLobby(); break; }
+    case 'ch':
+      if (isBusy()) { net.send({ type: 'no', why: 'busy' }, peer); break; }
+      pendingFrom = peer; hello(); tone(660, 0.15, 'square', 0.08);
+      showDlg(esc((lobby[peer] && lobby[peer].tag) || m.tag) + '<small>challenges you to a race!</small>', [['ACCEPT', acceptCh], ['DECLINE', () => { net.send({ type: 'no' }, peer); pendingFrom = null; closeDlg(); hello(); }]]);
+      break;
+    case 'cx': if (peer === pendingFrom) { pendingFrom = null; closeDlg(); $('lstat').textContent = 'Challenge withdrawn.'; hello(); } break;
+    case 'no': if (peer === pendingTo) { pendingTo = null; showDlg(esc(lobby[peer] ? lobby[peer].tag : 'They') + (m.why === 'busy' ? ' is busy right now.' : ' declined.'), [['OK', () => { closeDlg(); hello(); }]]); } break;
+    case 'ok': if (peer === pendingTo) { pendingTo = null; closeDlg(); beginMatch('host', peer, m.tag); } break;
+    default: if (peer === opp) onGameMsg(m);
+  }
+}
+function beginMatch(m, peer, tag) {
+  mode = m; opp = peer; oppTag = String(tag || 'RIVAL').toUpperCase().slice(0, 12); scoreB = scoreR = 0;
+  tags = m === 'host' ? { blue: myTag, red: oppTag } : { blue: oppTag, red: myTag };
+  hello(); initAudio(); $('mpBar').style.display = 'flex';
+  if (m === 'host') startRound2();
+  else { clearScene(); showHud(); setMsg('GET READY', esc(oppTag) + ' is hosting…'); }
+}
+function clearScene() { clearParts(); for (const b of bikes) b.dispose(); bikes = []; player = null; rival = null; for (const p of pickups) scene.remove(p.g); pickups.length = 0; }
+function startRound2() {
+  clearScene();
+  const a = new Bike(BLUE, mode === 'host'), r = new Bike(RED, mode === 'guest');
+  a.reset(0, 200, 0, -1); r.reset(0, -200, 0, 1);
+  for (const b of [a, r]) b.speed = b.target = 40;
+  bikes.push(a, r); player = mode === 'host' ? a : r; rival = mode === 'host' ? r : a; rival.remote = true;
+  inpR = { a: false, b: false }; rm = { me: false, them: false }; lastIn = ''; closeDlg();
+  if (mode === 'host') { net.send({ type: 'round' }, opp); spawnPickups(3); net.send({ type: 'pk', p: pickups.map(p => [p.pos.x, p.pos.y]) }, opp); }
+  rigYaw = player.visYaw; state = 'countdown'; cd = 3.0; lastBeep = 4; overInfo = '';
+  showHud(); updCam();
+}
+function sendPts(b) {
+  if (mode !== 'host') return;
+  net.send({ type: 'pts', i: bikes.indexOf(b), p: b.points.flatMap(q => [q.x, q.y]), x: b.pos.x, z: b.pos.y, d: b.dir }, opp);
+}
+function setDir(b, dx, dz) { if (b.dir[0] !== dx || b.dir[1] !== dz) { b.dir = [dx, dz]; b.yawT = yawOf(dx, dz); } }
+function setPts(b, m) {
+  const P = []; for (let i = 0; i < m.p.length; i += 2) P.push(new THREE.Vector2(m.p[i], m.p[i + 1]));
+  while (b.trail.children.length) b.trail.remove(b.trail.children[0]);
+  b.segs = []; b.points = P;
+  for (let i = 0; i < P.length; i++) { b.newSeg(); if (i < P.length - 1) b.setSeg(b.segs[i], P[i], P[i + 1].x, P[i + 1].y); }
+  b.pos.set(m.x, m.z); setDir(b, m.d[0], m.d[1]);
+}
+function onGameMsg(m) {
+  if (mode === 'guest') {
+    if (m.type === 'round') { startRound2(); return; }
+    if (m.type === 'pk') { for (const p of pickups) scene.remove(p.g); pickups.length = 0; m.p.forEach(([x, z]) => addPickup(x, z)); return; }
+    if (m.type === 's') {
+      if (m.st === 'play' && state === 'countdown') { state = 'play'; setMsg('GO', '', '#ffffff', 0.7); }
+      m.b.forEach((d, i) => { const b = bikes[i]; if (!b || !b.alive) return; b.pos.set(d[0], d[1]); setDir(b, d[2], d[3]); b.speed = d[4]; });
+      return;
+    }
+    if (m.type === 'pts') { const b = bikes[m.i]; if (b && b.alive) setPts(b, m); return; }
+    if (m.type === 'ev') {
+      if (m.k === 'crash') { const b = bikes[m.i]; if (b) { b.pos.set(m.x, m.z); b.crash(); } }
+      else if (m.k === 'wipe') { const p = pickups[m.pk]; if (p && p.live) { p.live = false; scene.remove(p.g); gridWipe(p, bikes[m.who]); } }
+      return;
+    }
+    if (m.type === 'end') { scoreB = m.sc[0]; scoreR = m.sc[1]; end2(m.w); return; }
+  }
+  if (m.type === 'in' && mode === 'host') {
+    if (m.turn && rival && state === 'play') rival.turn(m.turn > 0 ? 1 : -1);
+    if ('a' in m) { inpR.a = !!m.a; inpR.b = !!m.b; }
+    return;
+  }
+  if (m.type === 'rm') { rm.them = true; updRematch(); return; }
+  if (m.type === 'bye') { oppGone(); return; }
+}
+function end2(w) {
+  const me = mode === 'host' ? 0 : 1;
+  overInfo = tags.blue + ' ' + scoreB + ' – ' + scoreR + ' ' + tags.red;
+  endRound(w < 0 ? 'DRAW' : w === me ? 'YOU WIN' : 'YOU LOSE', w < 0 ? '#ffffff' : w === me ? '#5fe6ff' : '#ff6a5a');
+}
+function showRematch() {
+  showDlg(esc(msgText) + '<small>' + esc(overInfo) + '</small>', [['REMATCH', wantRematch], ['LEAVE', () => leaveMatch(true)]], true);
+  rmShown = true; updRematch();
+}
+function wantRematch() { if (rm.me || mode === 'solo') return; rm.me = true; net.send({ type: 'rm' }, opp); updRematch(); }
+function updRematch() {
+  const t = rm.me && rm.them ? 'Rematch on!' : rm.me ? 'Waiting for ' + oppTag + '…' : rm.them ? oppTag + ' wants a rematch!' : 'Rematch? Both riders must agree.';
+  if (rmShown) $('dsub').textContent = t;
+  if (state === 'over') setMsg(msgText, t + (renderer.xr.isPresenting && !rm.me ? ' · press A' : ''), msgColor);
+  if (rm.me && rm.them && mode === 'host') startRound2();
+}
+function oppGone() {
+  if (mode === 'solo') return;
+  const t = oppTag; endMatchLocal();
+  showDlg(esc(t) + '<small>left the game.</small>', [['OK', closeDlg]]);
+}
+function leaveMatch(notify) { if (notify && net && opp) net.send({ type: 'bye' }, opp); endMatchLocal(); closeDlg(); }
+function endMatchLocal() {
+  mode = 'solo'; opp = null; state = 'menu'; clearScene(); setMsg('');
+  for (const id of ['hud', 'spd', 'mini', 'touch', 'mpBar']) $(id).style.display = 'none';
+  $('menu').style.display = 'flex'; showPanel('p2'); addShowroom(); hello(); renderLobby();
+}
+
 // ---------- main loop ----------
 const clock = new THREE.Clock(); const camWorld = new THREE.Vector3();
 rig.position.set(0, 30, 330); camera.position.set(0, 1.6, 0); camera.rotation.set(-0.12, 0, 0);
 // showroom on the title screen
-for (const [c, x] of [[BLUE, -1.6], [RED, 1.6]]) { const b = new Bike(c, false); b.reset(x, 0, 0, -1); b.speed = 80; b.solid = false; b.trail.visible = false; bikes.push(b); }
+function addShowroom() { for (const [c, x] of [[BLUE, -1.6], [RED, 1.6]]) { const b = new Bike(c, false); b.reset(x, 0, 0, -1); b.speed = 80; b.solid = false; b.trail.visible = false; bikes.push(b); } }
+addShowroom();
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.05), xr = renderer.xr.isPresenting;
   readXR();
   if (state === 'countdown') {
     cd -= dt; const n = Math.ceil(cd);
-    if (n !== lastBeep && n > 0) { lastBeep = n; tone(440, 0.15, 'square', 0.08); setMsg(String(n), 'Level ' + level + ' · ' + LEVELS[level - 1][0], '#bff6ff'); }
+    if (n !== lastBeep && n > 0) { lastBeep = n; tone(440, 0.15, 'square', 0.08); setMsg(String(n), mode === 'solo' ? 'Level ' + level + ' · ' + LEVELS[level - 1][0] : tags.blue + ' vs ' + tags.red, '#bff6ff'); }
     if (cd <= 0) { state = 'play'; tone(880, 0.35, 'square', 0.1); setMsg('GO', '', '#ffffff', 0.7); }
   }
   if ((state === 'play' || state === 'over') && player) {
-    if (player.alive && state === 'play') {
-      if (inp.accel || xrAccel) player.target += ACC * dt;
-      if (inp.brake || xrBrake) player.target -= ACC * 1.4 * dt;
-      player.target = Math.min(MAX_V, Math.max(MIN_V, player.target));
+    if (mode === 'guest') {
+      const k = (inp.accel || xrAccel ? 'a' : '') + (inp.brake || xrBrake ? 'b' : '');
+      if (k !== lastIn && state === 'play') { lastIn = k; net.send({ type: 'in', a: k.includes('a'), b: k.includes('b') }, opp); }
+      for (const b of bikes) if (b.alive && state === 'play') { b.pos.x += b.dir[0] * b.speed * dt; b.pos.y += b.dir[1] * b.speed * dt; }
+    } else {
+      if (player.alive && state === 'play') {
+        if (inp.accel || xrAccel) player.target += ACC * dt;
+        if (inp.brake || xrBrake) player.target -= ACC * 1.4 * dt;
+        player.target = Math.min(MAX_V, Math.max(MIN_V, player.target));
+      }
+      if (mode === 'host' && rival && rival.alive && state === 'play') {
+        if (inpR.a) rival.target += ACC * dt;
+        if (inpR.b) rival.target -= ACC * 1.4 * dt;
+        rival.target = Math.min(MAX_V, Math.max(MIN_V, rival.target));
+      }
+      for (const b of bikes) if (!b.isPlayer && !b.remote && b.alive) b.think(dt);
+      for (const b of bikes) b.update(dt);
+      for (let i = 0; i < bikes.length; i++) for (let j = i + 1; j < bikes.length; j++) {
+        const a = bikes[i], b = bikes[j];
+        if (a.alive && b.alive && a.pos.distanceTo(b.pos) < 1.8) { a.crash(); b.crash(); }
+      }
     }
-    for (const b of bikes) if (!b.isPlayer && b.alive) b.think(dt);
-    for (const b of bikes) b.update(dt);
-    for (let i = 0; i < bikes.length; i++) for (let j = i + 1; j < bikes.length; j++) {
-      const a = bikes[i], b = bikes[j];
-      if (a.alive && b.alive && a.pos.distanceTo(b.pos) < 1.8) { a.crash(); b.crash(); }
-    }
-    if (state === 'play') {
+    if (state === 'play' && mode === 'solo') {
       const redsAlive = bikes.some(b => !b.isPlayer && b.alive);
       if (!player.alive && !redsAlive) endRound('DRAW', '#ffffff');
       else if (!player.alive) { scoreR++; overInfo = 'Retry level ' + level; endRound('CRASHED', '#ff6a5a'); }
       else if (!redsAlive) { scoreB++;
         if (level < 10) { level++; best = Math.max(best, level); saveProg(); overInfo = 'Next: level ' + level + ' · ' + LEVELS[level - 1][0]; endRound('LEVEL CLEAR', '#5fe6ff'); }
         else { overInfo = 'All 10 levels beaten!'; endRound('GRID MASTER', '#5fe6ff'); } }
-    } else {
+    } else if (state === 'play' && mode === 'host') {
+      const A = bikes[0], B = bikes[1];
+      if (!A.alive || !B.alive) {
+        const w = (!A.alive && !B.alive) ? -1 : (!A.alive ? 1 : 0);
+        if (w === 0) scoreB++; else if (w === 1) scoreR++;
+        net.send({ type: 'end', w, sc: [scoreB, scoreR] }, opp); end2(w);
+      }
+    } else if (state === 'over') {
       overT += dt;
-      if (overT > 1.0 && !subText) setMsg(msgText, (overInfo ? overInfo + ' · ' : '') + (isTouch ? 'tap to go' : (xr ? 'press A' : 'Space or click')), msgColor);
-      if (overT > 7) startRound();
+      if (mode !== 'solo') { if (overT > 1.2 && !rmShown && !renderer.xr.isPresenting) showRematch(); else if (overT > 1.2 && !subText) updRematch(); }
+      else {
+        if (overT > 1.0 && !subText) setMsg(msgText, (overInfo ? overInfo + ' · ' : '') + (isTouch ? 'tap to go' : (xr ? 'press A' : 'Space or click')), msgColor);
+        if (overT > 7) startRound();
+      }
     }
+  }
+  if (mode === 'host' && opp && (state === 'countdown' || state === 'play' || state === 'over')) {
+    snapT -= dt;
+    if (snapT <= 0) { snapT = 0.05; const r2 = v => Math.round(v * 100) / 100;
+      net.send({ type: 's', st: state, b: bikes.map(b => [r2(b.pos.x), r2(b.pos.y), b.dir[0], b.dir[1], r2(b.speed), b.alive ? 1 : 0]) }, opp); }
   }
   if (msgT > 0) { msgT -= dt; if (msgT <= 0) setMsg(''); }
   const tt = clock.elapsedTime;
@@ -899,6 +1143,8 @@ function loop() {
   renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(loop);
+// anonymous visit counter (a number only, no names): counts opens of the GitHub Pages site
+if (location.hostname === 'simy-p.github.io') { try { new Image().src = 'https://hits.sh/simy-p.github.io/LightBikes.svg'; } catch (e) {} }
 </script>
 </body>
 </html>
