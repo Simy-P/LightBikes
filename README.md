@@ -9,6 +9,6 @@ Neon light-cycle game for the browser, phones and Meta Quest (WebXR). Blue vs re
 
 ## Plays
 
-[![Plays](https://hits.sh/simy-p.github.io/LightBikes.svg?label=plays&view=total)](https://hits.sh/simy-p.github.io/LightBikes/)
+**[See how many times the game has been played →](https://hits.sh/simy-p.github.io/LightBikes/)**
 
-Counts each time the game page is opened (a number only, no names). Tap the badge for the stats page.
+Counts each time the game page is opened (a number only, no names). There's no badge here on purpose, so views of this README don't add to the count.
