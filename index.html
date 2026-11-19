@@ -12,6 +12,8 @@ canvas{display:block}
 #hud .b{color:#5fe6ff;text-shadow:0 0 8px #2fd8ff}#hud .r{color:#ff6a5a;text-shadow:0 0 8px #ff3a2a}
 #spd{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;pointer-events:none;text-align:center;font-size:13px;letter-spacing:2px;color:#9fefff;text-shadow:0 0 8px #2fd8ff}
 #bar{width:220px;height:8px;border:1px solid #2fd8ff;border-radius:4px;margin-top:6px;overflow:hidden}#bar i{display:block;height:100%;background:linear-gradient(90deg,#2fd8ff,#fff);width:30%}
+#mini{position:fixed;left:50%;bottom:62px;transform:translateX(-50%);width:clamp(110px,26vw,150px);height:clamp(110px,26vw,150px);display:none;pointer-events:none;border-radius:6px}
+#mini.corner{left:14px;bottom:14px;transform:none}
 #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;text-align:center}
 #msg .m{font-size:clamp(30px,9vw,84px);font-weight:800;letter-spacing:6px;text-shadow:0 0 24px currentColor}
 #msg .s{font-size:clamp(12px,3vw,18px);letter-spacing:2px;margin-top:10px;opacity:.85}
@@ -35,6 +37,7 @@ button.small{padding:8px 14px;font-size:13px}
 <body>
 <div id="hud" style="display:none"><div class="b" id="sb">BLUE 0</div><div id="cam" style="opacity:.6">CHASE CAM</div><div class="r" id="sr">RED 0</div></div>
 <div id="spd" style="display:none"><span id="kmh">0 KM/H</span><div id="bar"><i id="bari"></i></div></div>
+<canvas id="mini" width="256" height="256"></canvas>
 <div id="msg"><div class="m" id="mm"></div><div class="s" id="ms"></div></div>
 <div id="touch">
   <div><button class="tb" id="tL">◀</button><button class="tb" id="tR">▶</button></div>
@@ -170,7 +173,7 @@ const wallMat = new THREE.ShaderMaterial({
         arcs+=flick*(smoothstep(w,0.,abs(y-yy))*1.4 + smoothstep(w*6.,0.,abs(y-yy))*.25); }
       float edge=smoothstep(.07,0.,y)*1.2+smoothstep(.9,1.,y)*1.5;
       float base=.2+.15*n(vec2(x*.05-uT*.7,y*3.+uT*1.5));
-      float d=length(vW.xz-uP); float near=1.+3.*exp(-d/30.);
+      float d=length(vW.xz-uP); float near=1.+1.6*exp(-d/30.);
       vec3 col=(uC*(base+grid+edge+scan) + (uC+vec3(.6))*arcs)*near;
       gl_FragColor=vec4(col,1.); }`
 });
@@ -612,7 +615,7 @@ function startRound() {
   for (let i = 0; i < nRed; i++) { const b = new Bike(RED, false); b.reset(...spawns[i]); b.ai = cfg; b.speed = b.target = cfg.v * (0.9 + Math.random() * 0.2); bikes.push(b); }
   updCam();
   rigYaw = player.visYaw; state = 'countdown'; cd = 3.0; lastBeep = 4;
-  $('menu').style.display = 'none'; $('hud').style.display = 'flex'; $('spd').style.display = 'block'; if (isTouch && !renderer.xr.isPresenting) $('touch').style.display = 'flex';
+  $('menu').style.display = 'none'; $('hud').style.display = 'flex'; $('spd').style.display = 'block'; if (!renderer.xr.isPresenting) { $('mini').style.display = 'block'; $('mini').classList.toggle('corner', !isTouch); } if (isTouch && !renderer.xr.isPresenting) $('touch').style.display = 'flex';
 }
 function endRound(text, color) { state = 'over'; overT = 0; setMsg(text, '', color); }
 function requestRestart() { if (state === 'over' && overT > 1.0) startRound(); }
@@ -686,11 +689,42 @@ $('vr').onclick = async () => {
     const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
     await renderer.xr.setSession(s);
     try { renderer.xr.setFoveation(1); } catch (e) {}
-    hudPlane.visible = true; $('touch').style.display = 'none';
-    s.addEventListener('end', () => { hudPlane.visible = false; });
+    hudPlane.visible = true; mapPlane.visible = true; $('touch').style.display = 'none'; $('mini').style.display = 'none';
+    s.addEventListener('end', () => { hudPlane.visible = false; mapPlane.visible = false; });
     startRound();
   } catch (e) { $('note').textContent = 'Could not start VR: ' + e.message; }
 };
+
+// ---------- minimap ----------
+const mini = $('mini'), mctx = mini.getContext('2d'), mapTex = new THREE.CanvasTexture(mini);
+const mapPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: mapTex, transparent: true, depthTest: false, fog: false }));
+mapPlane.renderOrder = 999; mapPlane.position.set(0.82, 1.0, -1.45); mapPlane.rotation.set(-0.35, -0.45, 0); mapPlane.visible = false; rig.add(mapPlane);
+function drawMap() {
+  const c = mctx, S = 256, k = S / (ARENA * 2 + 24), o = v => (v + ARENA + 12) * k;
+  c.clearRect(0, 0, S, S);
+  c.fillStyle = 'rgba(0,12,24,0.72)'; c.fillRect(0, 0, S, S);
+  c.strokeStyle = 'rgba(80,200,255,0.12)'; c.lineWidth = 1; c.beginPath();
+  for (let v = -ARENA + 50; v < ARENA; v += 50) { c.moveTo(o(v), o(-ARENA)); c.lineTo(o(v), o(ARENA)); c.moveTo(o(-ARENA), o(v)); c.lineTo(o(ARENA), o(v)); }
+  c.stroke();
+  c.shadowColor = '#7fe8ff'; c.shadowBlur = 8; c.strokeStyle = '#bff6ff'; c.lineWidth = 3;
+  c.strokeRect(o(-ARENA), o(-ARENA), ARENA * 2 * k, ARENA * 2 * k);
+  for (const b of bikes) {
+    if (!b.solid || !b.points) continue;
+    const col = b.color === BLUE ? '#5fe6ff' : '#ff5a48';
+    c.globalAlpha = b.alive ? 1 : Math.max(0, 1 - b.drop / 1.4);
+    c.shadowColor = col; c.shadowBlur = 6; c.strokeStyle = col; c.lineWidth = 2.5; c.beginPath();
+    b.points.forEach((p, i) => i ? c.lineTo(o(p.x), o(p.y)) : c.moveTo(o(p.x), o(p.y)));
+    c.lineTo(o(b.pos.x), o(b.pos.y)); c.stroke();
+    if (b.alive) {
+      const x = o(b.pos.x), y = o(b.pos.y), [dx, dz] = b.dir, r = b.isPlayer ? 7 : 5;
+      c.fillStyle = b.isPlayer ? '#ffffff' : col; c.beginPath();
+      c.moveTo(x + dx * r * 1.6, y + dz * r * 1.6); c.lineTo(x - dz * r - dx * r, y + dx * r - dz * r); c.lineTo(x + dz * r - dx * r, y - dx * r - dz * r); c.closePath(); c.fill();
+    }
+    c.globalAlpha = 1;
+  }
+  c.shadowBlur = 0;
+  mapTex.needsUpdate = true;
+}
 
 // ---------- HUD drawing ----------
 let hudTimer = 0;
@@ -783,7 +817,7 @@ function loop() {
   wallMat.uniforms.uT.value = clock.elapsedTime; if (player) wallMat.uniforms.uP.value.set(player.pos.x, player.pos.y);
   wallCrackle(dt);
   updateAudio();
-  hudTimer -= dt; if (hudTimer <= 0) { hudTimer = 0.1; drawHud(); }
+  hudTimer -= dt; if (hudTimer <= 0) { hudTimer = 0.1; drawHud(); if (state !== 'menu') drawMap(); }
   renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(loop);
