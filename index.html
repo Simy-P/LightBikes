@@ -14,13 +14,15 @@ canvas{display:block}
 #bar{width:220px;height:8px;border:1px solid #2fd8ff;border-radius:4px;margin-top:6px;overflow:hidden}#bar i{display:block;height:100%;background:linear-gradient(90deg,#2fd8ff,#fff);width:30%}
 #mini{position:fixed;left:50%;bottom:62px;transform:translateX(-50%);width:clamp(110px,26vw,150px);height:clamp(110px,26vw,150px);display:none;pointer-events:none;border-radius:6px}
  #start{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:20px;box-sizing:border-box;background:linear-gradient(#0000 0%,#0000 45%,#000b 100%)}
-.st-title{font-size:clamp(46px,14vw,150px);font-weight:800;letter-spacing:10px;color:#dffaff;text-shadow:0 0 20px #2fd8ff,0 0 60px #2fd8ff,0 0 120px #2fd8ff;animation:pulse 3s ease-in-out infinite}
+.st-title{font-size:clamp(34px,11vw,150px);font-weight:800;letter-spacing:clamp(2px,0.9vw,10px);color:#dffaff;text-shadow:0 0 20px #2fd8ff,0 0 60px #2fd8ff,0 0 120px #2fd8ff;animation:pulse 3s ease-in-out infinite}
 .st-title span{color:#ffd0c8;text-shadow:0 0 20px #ff3a2a,0 0 60px #ff3a2a,0 0 120px #ff3a2a}
 .st-tag{font-size:clamp(12px,3.2vw,22px);letter-spacing:6px;color:#ffe9ff;text-shadow:0 0 12px #b04aff,0 0 30px #b04aff}
 .st-btns{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:24px}
 button.big{font-size:clamp(18px,4.6vw,26px);padding:18px 34px;border-radius:14px;letter-spacing:4px}
 #stNote{font-size:12px;letter-spacing:1px;opacity:.75;max-width:520px}
 @keyframes pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.35)}}
+.credit{position:absolute;left:0;right:0;bottom:max(12px,env(safe-area-inset-bottom));font-size:11px;letter-spacing:5px;color:#cfe9ff;opacity:.7;text-shadow:0 0 8px #2fd8ff;pointer-events:none}
+#menu{position:fixed}
 .panel{display:flex;flex-direction:column;align-items:center;gap:12px}
 #tag{font-family:inherit;font-size:16px;letter-spacing:3px;text-transform:uppercase;padding:11px 14px;width:170px;border-radius:10px;border:2px solid #2fd8ff;background:#001018;color:#dffaff;outline:none;text-align:center}
 .sw{width:34px;height:34px;padding:0;border-radius:50%;border:3px solid #0008;box-shadow:0 0 10px currentColor}.sw.sel{border-color:#fff;transform:scale(1.18)}
@@ -64,6 +66,7 @@ button.small{padding:8px 14px;font-size:13px}
   <div class="st-tag">THE GRID IS A DANGEROUS PLACE</div>
   <div class="st-btns"><button id="stVR" class="big" style="display:none">ENTER VR</button><button id="stFlat" class="big red">PLAY ON SCREEN</button></div>
   <div id="stNote"></div>
+  <div class="credit">POLAND &amp; CLAUDE PRODUCTIONS</div>
 </div>
 <div id="menu" style="display:none">
   <h1>LIGHT<span>BIKES</span></h1>
@@ -90,6 +93,7 @@ button.small{padding:8px 14px;font-size:13px}
     <div id="plist" class="plist"></div>
     <button class="small" id="back2">◀ BACK</button>
   </div>
+  <div class="credit">POLAND &amp; CLAUDE PRODUCTIONS</div>
 </div>
 <div id="dlg"><div id="dtext"></div><div id="dsub"></div><div class="row" id="dbtns"></div></div>
 <div id="mpBar"><button class="small" id="vrIn" style="display:none">VR</button><button class="small red" id="leaveBtn">LEAVE</button></div>
@@ -1220,7 +1224,8 @@ function drawVR(force) {
     }
     y += h + 18;
   }
-  c.font = '500 22px Orbitron, sans-serif'; c.fillStyle = 'rgba(200,240,255,0.6)'; c.fillText('Aim with either controller · pull the trigger to choose', W / 2, W - 48);
+  c.font = '500 22px Orbitron, sans-serif'; c.fillStyle = 'rgba(200,240,255,0.6)'; c.fillText('Aim with either controller · pull the trigger to choose', W / 2, W - 70);
+  c.font = '600 18px Orbitron, sans-serif'; c.fillStyle = 'rgba(200,240,255,0.45)'; c.fillText('POLAND & CLAUDE PRODUCTIONS', W / 2, W - 38);
   vTex.needsUpdate = true;
 }
 function updateVRMenu(dt) {

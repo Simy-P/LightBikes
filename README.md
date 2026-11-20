@@ -1,6 +1,6 @@
 # LightBikes
 
-Neon light-cycle game for the browser, phones and Meta Quest (WebXR). Blue vs red, 90° turns, speed control, procedural synthwave soundtrack.
+A Poland & Claude Production. Neon light-cycle game for the browser, phones and Meta Quest (WebXR). Blue vs red, 90° turns, speed control, procedural synthwave soundtrack.
 
 **Play:** https://simy-p.github.io/LightBikes/
 
