@@ -632,19 +632,22 @@ const engines = new Map(); let engBus = null, distCurve = null;
 function makeEngine(b) {
   if (!engBus) {
     engBus = actx.createGain(); engBus.gain.value = 1; engBus.connect(actx.destination);
-    const n = 1024; distCurve = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; distCurve[i] = Math.tanh(x * 3.2); }
+    const len = actx.sampleRate * 2; distCurve = actx.createBuffer(1, len, actx.sampleRate); const d = distCurve.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   }
-  const e = { seed: 0.97 + Math.random() * 0.06 };
+  // ethereal light-cycle hum: chorused glassy tones + a shimmering high whine + airy hiss, no distortion
+  const e = { seed: 0.96 + Math.random() * 0.08, dop: 1, last: null };
   e.out = actx.createGain(); e.out.gain.value = 0;
-  e.filt = actx.createBiquadFilter(); e.filt.type = 'lowpass'; e.filt.Q.value = 7;
-  e.shaper = actx.createWaveShaper(); e.shaper.curve = distCurve; e.shaper.oversample = '2x';
-  e.pre = actx.createGain(); e.pre.gain.value = 0.6;
-  e.am = actx.createGain(); e.am.gain.value = 0.65;                 // "firing" growl
-  e.lfo = actx.createOscillator(); e.lfo.type = 'square';
-  e.lfoG = actx.createGain(); e.lfoG.gain.value = 0.35; e.lfo.connect(e.lfoG); e.lfoG.connect(e.am.gain);
-  e.o = [['sawtooth', 1, 0], ['square', 0.5, 0], ['sawtooth', 1.007, 0], ['sine', 0.25, 0]].map(([type, mul]) => {
-    const o = actx.createOscillator(); o.type = type; o.mul = mul; o.connect(e.pre); o.start(); return o; });
-  e.pre.connect(e.shaper); e.shaper.connect(e.filt); e.filt.connect(e.am); e.am.connect(e.out); e.lfo.start();
+  e.bp = actx.createBiquadFilter(); e.bp.type = 'bandpass'; e.bp.Q.value = 1.4;
+  e.lp = actx.createBiquadFilter(); e.lp.type = 'lowpass'; e.lp.frequency.value = 5000;
+  e.bp.connect(e.lp); e.lp.connect(e.out);
+  e.vib = actx.createOscillator(); e.vib.frequency.value = 5.2; e.vibG = actx.createGain(); e.vibG.gain.value = 9; e.vib.connect(e.vibG); e.vib.start();
+  e.o = [['triangle', 1, 0.5, -6], ['sine', 1, 0.45, 6], ['sine', 1.5, 0.16, 3], ['sine', 2, 0.12, -4], ['sine', 4, 0.07, 0]].map(([type, mul, vol, det]) => {
+    const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.mul = mul; o.detune.value = det; g.gain.value = vol;
+    e.vibG.connect(o.detune); o.connect(g); g.connect(e.bp); o.start(); return o; });
+  e.air = actx.createBufferSource(); e.air.buffer = distCurve; e.air.loop = true;
+  e.airF = actx.createBiquadFilter(); e.airF.type = 'bandpass'; e.airF.Q.value = 0.8; e.airG = actx.createGain(); e.airG.gain.value = 0;
+  e.air.connect(e.airF); e.airF.connect(e.airG); e.airG.connect(e.out); e.air.start();
+  e.lfo = e.vib;
   if (b.isPlayer) e.out.connect(engBus);
   else {
     e.pan = actx.createPanner(); e.pan.panningModel = 'HRTF'; e.pan.distanceModel = 'inverse';
@@ -656,7 +659,7 @@ function makeEngine(b) {
 function killEngine(b) {
   const e = engines.get(b); if (!e) return; engines.delete(b);
   const t = actx.currentTime; e.out.gain.setTargetAtTime(0, t, 0.05);
-  setTimeout(() => { try { e.o.forEach(o => o.stop()); e.lfo.stop(); e.out.disconnect(); } catch (err) {} }, 400);
+  setTimeout(() => { try { e.o.forEach(o => o.stop()); e.lfo.stop(); e.air.stop(); e.out.disconnect(); } catch (err) {} }, 400);
 }
 const setP = (p, v, t) => { if (p) p.setTargetAtTime(v, t, 0.04); };
 function updateAudio() {
@@ -672,12 +675,20 @@ function updateAudio() {
     let e = engines.get(b);
     if (!live) { if (e) killEngine(b); continue; }
     if (!e) e = makeEngine(b);
-    const f = (b.speed - MIN_V) / (MAX_V - MIN_V), base = (34 + b.speed * 1.75) * e.seed;
+    const f = (b.speed - MIN_V) / (MAX_V - MIN_V);
+    // Doppler for rivals: pitch rises as they close on you and drops as they pass
+    if (!b.isPlayer && player) {
+      const rx = camWorld.x - b.pos.x, rz = camWorld.z - b.pos.y, r = Math.hypot(rx, rz) || 1;
+      const vr = ((b.dir[0] * b.speed - (player.alive ? player.dir[0] * player.speed : 0)) * rx + (b.dir[1] * b.speed - (player.alive ? player.dir[1] * player.speed : 0)) * rz) / r;
+      e.dop += (Math.min(1.35, Math.max(0.75, 160 / (160 - Math.max(-120, Math.min(120, vr))))) - e.dop) * 0.25;
+    } else e.dop = 1;
+    const base = (62 + b.speed * 2.3) * e.seed * e.dop;
     e.o.forEach(o => setP(o.frequency, base * o.mul, t));
-    setP(e.lfo.frequency, base * 0.5, t);
-    setP(e.filt.frequency, 280 + b.speed * 38, t);
-    setP(e.pre.gain, 0.45 + f * 0.6, t);
-    setP(e.out.gain, b.isPlayer ? 0.045 + f * 0.03 : 0.14 + f * 0.06, t);
+    setP(e.vib.frequency, 4.5 + f * 3, t);
+    setP(e.bp.frequency, base * (1.6 + f * 1.4), t);
+    setP(e.airF.frequency, 1500 + b.speed * 45, t);
+    setP(e.airG.gain, 0.04 + f * 0.12, t);
+    setP(e.out.gain, b.isPlayer ? 0.07 + f * 0.04 : 0.2 + f * 0.08, t);
     if (e.pan) { const pp = e.pan; if (pp.positionX) { pp.positionX.value = b.pos.x; pp.positionY.value = 0.8; pp.positionZ.value = b.pos.y; } else pp.setPosition(b.pos.x, 0.8, b.pos.y); }
   }
   for (const [b] of engines) if (!bikes.includes(b)) killEngine(b);
