@@ -772,6 +772,7 @@ function makeEngine(b) {
   e.lfo = e.vib;
   e.hum = actx.createGain(); e.hum.gain.value = 0.9; e.lp.disconnect(); e.lp.connect(e.hum); e.hum.connect(e.out);
   e.trem = actx.createOscillator(); e.trem.frequency.value = 7; e.tremG = actx.createGain(); e.tremG.gain.value = 0.1; e.trem.connect(e.tremG); e.tremG.connect(e.hum.gain); e.trem.start();
+  e.wah = actx.createGain(); e.wah.gain.value = 0; e.trem.connect(e.wah); e.wah.connect(e.bp.detune); // tone pulses with the throb
   // power underneath: warm sub octaves + low road/wind rumble
   e.subLP = actx.createBiquadFilter(); e.subLP.type = 'lowpass'; e.subLP.frequency.value = 220; e.subLP.Q.value = 1.2;
   e.subSh = actx.createWaveShaper(); { const n = 512, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * 1.2); } e.subSh.curve = c; }
@@ -827,8 +828,10 @@ function updateAudio() {
     setP(e.subLP.frequency, 160 + f * 180, t);
     setP(e.rumG.gain, 0.04 + f * 0.18 + k * 0.3, t);
     setP(e.rumF.frequency, 90 + f * 160, t);
-    setP(e.vib.frequency, 3.5 + f * 2, t);
-    setP(e.trem.frequency, 5 + f * 6, t);
+    // speed-linked modulation: slow gentle wobble when cruising, fast deep throb flat out
+    setP(e.vib.frequency, 3 + f * 7, t); setP(e.vibG.gain, 6 + f * 22, t);
+    setP(e.trem.frequency, 2.5 + f * 15, t); setP(e.tremG.gain, 0.12 + f * 0.28, t);
+    setP(e.wah.gain, 250 + f * 900, t);
     setP(e.bp.frequency, Math.min(9000, base * (1.4 + f * 0.8 + k * 1.2)), t);
     setP(e.airF.frequency, 1500 + b.speed * 45, t);
     setP(e.airG.gain, 0.02 + f * 0.05 + k * 0.25, t);
