@@ -1023,7 +1023,7 @@ function doTurn(s) {
   if (state !== 'play' || !player || !player.alive) return;
   if (mode === 'guest') { net.send({ type: 'in', turn: s }, opp); sfxTurn(); player.roll = -s * 0.45; } else player.turn(s);
 }
-function updCam() { $('cam').textContent = (mode === 'solo' ? 'LV ' + level : 'ONLINE') + ' · ' + (camMode === 'chase' ? 'CHASE' : 'COCKPIT'); }
+function updCam() { $('cam').textContent = (mode === 'solo' ? 'LV ' + level : 'BEST OF 5 · R' + roundNo) + ' · ' + (camMode === 'chase' ? 'CHASE' : 'COCKPIT'); }
 function toggleCam() { camMode = camMode === 'chase' ? 'cockpit' : 'chase'; updCam(); }
 
 // ---------- input: keyboard / touch ----------
@@ -1296,6 +1296,7 @@ function drawHud() {
 
 // ---------- two-player online (MQTT relay, host-authoritative) ----------
 let mode = 'solo', net = null, opp = null, oppTag = '', myTag = '', inLobby = false, lobby = {}, pendingTo = null, pendingFrom = null, rival = null;
+const WIN_ROUNDS = 3; let roundNo = 1, matchOver = false;
 let tags = { blue: 'BLUE', red: 'RED' }, inpR = { a: false, b: false }, snapT = 0, rm = { me: false, them: false }, rmShown = false, lastIn = '';
 let myCol = 4, matchCols = [4, 0];
 try { myTag = localStorage.getItem('lb_tag') || ''; const c = +localStorage.getItem('lb_col'); if (c >= 0 && c < 7 && localStorage.getItem('lb_col') !== null) myCol = c; } catch (e) {}
@@ -1417,7 +1418,7 @@ function onNet(m, peer) {
 function beginMatch(m, peer, tag, theirCol) {
   const hc = m === 'host' ? myCol : theirCol, gc0 = m === 'host' ? theirCol : myCol;
   matchCols = [hc, gc0 === hc ? (gc0 + 3) % 7 : gc0];
-  mode = m; opp = peer; oppTag = String(tag || 'RIVAL').toUpperCase().slice(0, 12); scoreB = scoreR = 0;
+  mode = m; opp = peer; oppTag = String(tag || 'RIVAL').toUpperCase().slice(0, 12); scoreB = scoreR = 0; roundNo = 1;
   tags = m === 'host' ? { blue: myTag, red: oppTag } : { blue: oppTag, red: myTag };
   hello(); initAudio(); $('mpBar').style.display = 'flex';
   if (m === 'host') startRound2();
@@ -1431,8 +1432,8 @@ function startRound2() {
   for (const b of [a, r]) b.speed = b.target = 40;
   bikes.push(a, r); player = mode === 'host' ? a : r; rival = mode === 'host' ? r : a; rival.remote = true;
   inpR = { a: false, b: false }; rm = { me: false, them: false }; lastIn = ''; closeDlg();
-  if (mode === 'host') { net.send({ type: 'round' }, opp); spawnPickups(3); net.send({ type: 'pk', p: pickups.map(p => [p.pos.x, p.pos.y]) }, opp); }
-  rigYaw = player.visYaw; state = 'countdown'; cd = 3.0; lastBeep = 4; overInfo = '';
+  if (mode === 'host') { net.send({ type: 'round', sc: [scoreB, scoreR], rn: roundNo }, opp); spawnPickups(3); net.send({ type: 'pk', p: pickups.map(p => [p.pos.x, p.pos.y]) }, opp); }
+  matchOver = false; rigYaw = player.visYaw; state = 'countdown'; cd = 3.0; lastBeep = 4; overInfo = '';
   showHud(); updCam();
 }
 function sendPts(b) {
@@ -1449,7 +1450,7 @@ function setPts(b, m) {
 }
 function onGameMsg(m) {
   if (mode === 'guest') {
-    if (m.type === 'round') { startRound2(); return; }
+    if (m.type === 'round') { if (m.sc) { scoreB = m.sc[0]; scoreR = m.sc[1]; } roundNo = m.rn || 1; startRound2(); return; }
     if (m.type === 'pk') { for (const p of pickups) scene.remove(p.g); pickups.length = 0; m.p.forEach(([x, z]) => addPickup(x, z)); return; }
     if (m.type === 's') {
       if (m.st === 'play' && state === 'countdown') { state = 'play'; setMsg('GO', '', '#ffffff', 0.7); }
@@ -1473,20 +1474,23 @@ function onGameMsg(m) {
   if (m.type === 'bye') { oppGone(); return; }
 }
 function end2(w) {
-  const me = mode === 'host' ? 0 : 1;
-  overInfo = tags.blue + ' ' + scoreB + ' – ' + scoreR + ' ' + tags.red;
-  endRound(w < 0 ? 'DRAW' : w === me ? 'YOU WIN' : 'YOU LOSE', w < 0 ? '#ffffff' : w === me ? '#5fe6ff' : '#ff6a5a');
+  const me = mode === 'host' ? 0 : 1, score = tags.blue + ' ' + scoreB + ' – ' + scoreR + ' ' + tags.red;
+  matchOver = scoreB >= WIN_ROUNDS || scoreR >= WIN_ROUNDS;
+  roundNo++;
+  const win = w === me, col = w < 0 ? '#ffffff' : win ? '#5fe6ff' : '#ff6a5a';
+  if (matchOver) { overInfo = 'Final: ' + score; endRound(win ? 'MATCH WON' : 'MATCH LOST', col); }
+  else { overInfo = score + ' · first to ' + WIN_ROUNDS; endRound(w < 0 ? 'DRAW · REPLAY' : win ? 'ROUND WON' : 'ROUND LOST', col); }
 }
 function showRematch() {
   showDlg(esc(msgText) + '<small>' + esc(overInfo) + '</small>', [['REMATCH', wantRematch], ['LEAVE', () => leaveMatch(true)]], true);
   rmShown = true; updRematch();
 }
-function wantRematch() { if (rm.me || mode === 'solo') return; rm.me = true; net.send({ type: 'rm' }, opp); updRematch(); }
+function wantRematch() { if (rm.me || mode === 'solo' || !matchOver) return; rm.me = true; net.send({ type: 'rm' }, opp); updRematch(); }
 function updRematch() {
   const t = rm.me && rm.them ? 'Rematch on!' : rm.me ? 'Waiting for ' + oppTag + '…' : rm.them ? oppTag + ' wants a rematch!' : 'Rematch? Both riders must agree.';
   if (rmShown) $('dsub').textContent = t;
   if (state === 'over') setMsg(msgText, t + (renderer.xr.isPresenting && !rm.me ? ' · press A' : ''), msgColor);
-  if (rm.me && rm.them && mode === 'host') startRound2();
+  if (rm.me && rm.them && mode === 'host') { scoreB = scoreR = 0; roundNo = 1; startRound2(); }
 }
 function oppGone() {
   if (mode === 'solo') return;
@@ -1592,7 +1596,7 @@ function loop() {
   readXR();
   if (state === 'countdown') {
     cd -= dt; const n = Math.ceil(cd);
-    if (n !== lastBeep && n > 0) { lastBeep = n; tone(440, 0.15, 'square', 0.08); setMsg(String(n), mode === 'solo' ? 'Level ' + level + ' · ' + LEVELS[level - 1][0] : tags.blue + ' vs ' + tags.red, '#bff6ff'); }
+    if (n !== lastBeep && n > 0) { lastBeep = n; tone(440, 0.15, 'square', 0.08); setMsg(String(n), mode === 'solo' ? 'Level ' + level + ' · ' + LEVELS[level - 1][0] : 'Round ' + roundNo + ' · ' + tags.blue + ' ' + scoreB + ' – ' + scoreR + ' ' + tags.red, '#bff6ff'); }
     if (cd <= 0) { state = 'play'; tone(880, 0.35, 'square', 0.1); setMsg('GO', '', '#ffffff', 0.7); }
   }
   if ((state === 'play' || state === 'over') && player) {
@@ -1634,7 +1638,10 @@ function loop() {
       }
     } else if (state === 'over') {
       overT += dt;
-      if (mode !== 'solo') { if (overT > 1.2 && !rmShown) showRematch(); else if (overT > 1.2 && !subText) updRematch(); }
+      if (mode !== 'solo' && !matchOver) {
+        if (overT > 1.0 && !subText) setMsg(msgText, overInfo + ' · next round…', msgColor);
+        if (mode === 'host' && overT > 3.5) startRound2();
+      } else if (mode !== 'solo') { if (overT > 1.2 && !rmShown) showRematch(); else if (overT > 1.2 && !subText) updRematch(); }
       else {
         if (overT > 1.0 && !subText) setMsg(msgText, (overInfo ? overInfo + ' · ' : '') + (isTouch ? 'tap to go' : (xr ? 'press A' : 'Space or click')), msgColor);
         if (overT > 7) startRound();
