@@ -581,7 +581,7 @@ class Bike {
       this.mesh.rotation.y = this.visYaw;
       const f = (this.speed - MIN_V) / (MAX_V - MIN_V);
       this.humps.scale.y = 0.35 + 0.75 * f;
-      this.roll *= Math.exp(-dt * 5); this.mesh.rotation.z = this.roll; this.turnKick = (this.turnKick || 0) * Math.exp(-dt * 5);
+      this.roll *= Math.exp(-dt * 5); this.mesh.rotation.z = this.roll; this.turnKick = (this.turnKick || 0) * Math.exp(-dt * 3.2);
       for (const w of this.wheels) w.rotation.x -= this.speed * dt / 0.65;
       const fl = 0.8 + 0.6 * f + Math.random() * 0.25; this.thr.scale.set(fl, fl, fl);
       const n = this.points.length, last = this.points[n - 1];
@@ -620,8 +620,16 @@ function sfxTurn() {
   if (!actx || !noiseBuf) return; const t = actx.currentTime, vr = renderer.xr.isPresenting;
   const s = actx.createBufferSource(); s.buffer = noiseBuf; const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2.5;
   f.frequency.setValueAtTime(3200, t); f.frequency.exponentialRampToValueAtTime(500, t + 0.3);
-  const g = actx.createGain(); g.gain.setValueAtTime(vr ? 0.22 : 0.09, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  const g = actx.createGain(); g.gain.setValueAtTime(vr ? 0.32 : 0.15, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
   s.connect(f); f.connect(g); g.connect(actx.destination); s.start(t); s.stop(t + 0.4);
+  const o = actx.createOscillator(), og = actx.createGain(); o.type = 'sine';
+  o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(28, t + 0.4);
+  og.gain.setValueAtTime(vr ? 0.7 : 0.4, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+  o.connect(og); og.connect(engBus || actx.destination); o.start(t); o.stop(t + 0.55);
+  const z = actx.createOscillator(), zg = actx.createGain(); z.type = 'sine';
+  z.frequency.setValueAtTime(300, t + 0.08); z.frequency.exponentialRampToValueAtTime(1600, t + 0.45);
+  zg.gain.setValueAtTime(0.0001, t); zg.gain.linearRampToValueAtTime(vr ? 0.06 : 0.03, t + 0.2); zg.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+  z.connect(zg); zg.connect(actx.destination); z.start(t); z.stop(t + 0.55);
 }
 function sfxCrash(loud) {
   if (!actx) return;
@@ -654,6 +662,16 @@ function makeEngine(b) {
   e.airF = actx.createBiquadFilter(); e.airF.type = 'bandpass'; e.airF.Q.value = 0.8; e.airG = actx.createGain(); e.airG.gain.value = 0;
   e.air.connect(e.airF); e.airF.connect(e.airG); e.airG.connect(e.out); e.air.start();
   e.lfo = e.vib;
+  // power underneath: warm sub octaves + low road/wind rumble
+  e.subLP = actx.createBiquadFilter(); e.subLP.type = 'lowpass'; e.subLP.frequency.value = 220; e.subLP.Q.value = 1.2;
+  e.subSh = actx.createWaveShaper(); { const n = 512, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * 1.8); } e.subSh.curve = c; }
+  e.subG = actx.createGain(); e.subG.gain.value = 0;
+  e.sub = [['sine', 0.5, 0.9], ['sine', 0.25, 0.8], ['sawtooth', 0.5, 0.25]].map(([type, mul, v]) => {
+    const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.mul = mul; g.gain.value = v; o.connect(g); g.connect(e.subSh); o.start(); return o; });
+  e.subSh.connect(e.subLP); e.subLP.connect(e.subG); e.subG.connect(e.out);
+  e.rum = actx.createBufferSource(); e.rum.buffer = distCurve; e.rum.loop = true; e.rum.playbackRate.value = 0.7;
+  e.rumF = actx.createBiquadFilter(); e.rumF.type = 'lowpass'; e.rumF.frequency.value = 140; e.rumG = actx.createGain(); e.rumG.gain.value = 0;
+  e.rum.connect(e.rumF); e.rumF.connect(e.rumG); e.rumG.connect(e.out); e.rum.start();
   if (b.isPlayer) e.out.connect(engBus);
   else {
     e.pan = actx.createPanner(); e.pan.panningModel = 'HRTF'; e.pan.distanceModel = 'inverse';
@@ -665,7 +683,7 @@ function makeEngine(b) {
 function killEngine(b) {
   const e = engines.get(b); if (!e) return; engines.delete(b);
   const t = actx.currentTime; e.out.gain.setTargetAtTime(0, t, 0.05);
-  setTimeout(() => { try { e.o.forEach(o => o.stop()); e.lfo.stop(); e.air.stop(); e.out.disconnect(); } catch (err) {} }, 400);
+  setTimeout(() => { try { e.o.forEach(o => o.stop()); e.sub.forEach(o => o.stop()); e.lfo.stop(); e.air.stop(); e.rum.stop(); e.out.disconnect(); } catch (err) {} }, 400);
 }
 const setP = (p, v, t) => { if (p) p.setTargetAtTime(v, t, 0.04); };
 let musLvl = -1;
@@ -691,13 +709,19 @@ function updateAudio() {
       e.dop += (Math.min(1.35, Math.max(0.75, 160 / (160 - Math.max(-120, Math.min(120, vr))))) - e.dop) * 0.25;
     } else e.dop = 1;
     const k = b.turnKick || 0; // momentum dip after a 90° turn
-    const base = (62 + b.speed * 2.3) * e.seed * e.dop * (1 - 0.16 * k);
+    const sling = 1 - 0.32 * k * k + 0.4 * k * (1 - k); // hard dip, then overshoot above cruise, then settle
+    const base = (62 + b.speed * 2.3) * e.seed * e.dop * sling;
     e.o.forEach(o => setP(o.frequency, base * o.mul, t));
+    e.sub.forEach(o => setP(o.frequency, base * o.mul, t));
+    setP(e.subG.gain, 0.55 + f * 0.75 + k * 0.6, t);
+    setP(e.subLP.frequency, 160 + f * 180, t);
+    setP(e.rumG.gain, 0.12 + f * 0.55 + k * 0.4, t);
+    setP(e.rumF.frequency, 90 + f * 160, t);
     setP(e.vib.frequency, 4.5 + f * 3, t);
     setP(e.bp.frequency, base * (1.6 + f * 1.4 + k * 1.6), t);
     setP(e.airF.frequency, 1500 + b.speed * 45, t);
     setP(e.airG.gain, 0.04 + f * 0.12 + k * 0.3, t);
-    setP(e.out.gain, (b.isPlayer ? 0.07 + f * 0.04 : 0.2 + f * 0.08) * (vr ? (b.isPlayer ? 3.4 : 2.2) : 1), t);
+    setP(e.out.gain, (b.isPlayer ? 0.13 + f * 0.09 : 0.32 + f * 0.14) * (vr ? (b.isPlayer ? 2.6 : 1.8) : 1), t);
     if (e.pan) { const pp = e.pan; if (pp.positionX) { pp.positionX.value = b.pos.x; pp.positionY.value = 0.8; pp.positionZ.value = b.pos.y; } else pp.setPosition(b.pos.x, 0.8, b.pos.y); }
   }
   for (const [b] of engines) if (!bikes.includes(b)) killEngine(b);
