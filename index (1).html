@@ -776,7 +776,7 @@ function makeEngine(b) {
   e.subLP = actx.createBiquadFilter(); e.subLP.type = 'lowpass'; e.subLP.frequency.value = 220; e.subLP.Q.value = 1.2;
   e.subSh = actx.createWaveShaper(); { const n = 512, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * 1.2); } e.subSh.curve = c; }
   e.subG = actx.createGain(); e.subG.gain.value = 0;
-  e.sub = (b.isPlayer || !LITE_AUDIO ? [['sine', 0.125, 0.9], ['sine', 0.0625, 0.6]] : [['sine', 0.125, 1.2]]).map(([type, mul, v]) => {
+  e.sub = (b.isPlayer || !LITE_AUDIO ? [['sine', 0.25, 0.9], ['sine', 0.125, 0.6]] : [['sine', 0.25, 1.2]]).map(([type, mul, v]) => {
     const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.mul = mul; g.gain.value = v; o.connect(g); g.connect(e.subSh); o.start(); return o; });
   e.subSh.connect(e.subLP); e.subLP.connect(e.subG); e.subG.connect(e.out);
   e.rum = actx.createBufferSource(); e.rum.buffer = distCurve; e.rum.loop = true; e.rum.playbackRate.value = 0.7;
@@ -820,7 +820,7 @@ function updateAudio() {
     } else e.dop = 1;
     const k = b.turnKick || 0; // momentum dip after a 90° turn
     const sling = 1 - 0.32 * k * k + 0.4 * k * (1 - k); // hard dip, then overshoot above cruise, then settle
-    const base = (62 + b.speed * 2.3) * 4 * e.seed * e.dop * sling; // hum sits two octaves up
+    const base = (62 + b.speed * 2.3) * 2 * e.seed * e.dop * sling; // hum sits one octave up
     e.o.forEach(o => setP(o.frequency, base * o.mul, t));
     e.sub.forEach(o => setP(o.frequency, base * o.mul, t));
     setP(e.subG.gain, 0.55 + f * 0.75 + k * 0.6, t);
