@@ -116,12 +116,15 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 // ---------- sky ----------
 const sky = new THREE.Mesh(new THREE.SphereGeometry(3500, 32, 16), new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false,
+  uniforms: { uFlash: { value: 0 }, uDir: { value: new THREE.Vector3(0, 0.3, -1).normalize() } },
   vertexShader: `varying vec3 vD; void main(){ vD=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader: `varying vec3 vD; void main(){
+  fragmentShader: `varying vec3 vD; uniform float uFlash; uniform vec3 uDir; void main(){
     float h=max(vD.y,0.);
     float t=0.5+0.5*normalize(vD.xz+1e-5).y;
     vec3 hor=mix(vec3(0.35,0.03,0.02),vec3(0.0,0.18,0.36),t);
-    vec3 c=mix(hor,vec3(0.,0.003,0.01),pow(h,0.3));
+    vec3 c=mix(hor,vec3(0.006,0.002,0.016),pow(h,0.3));
+    float fl=uFlash*(0.18+1.1*pow(max(dot(vD,uDir),0.),6.));
+    c+=vec3(0.55,0.5,0.85)*fl;
     gl_FragColor=vec4(c,1.); }`
 }));
 sky.renderOrder = -1; scene.add(sky);
@@ -187,6 +190,7 @@ const sstep = (a, b, x) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 
 })();
 
 const boxGeo0 = new THREE.BoxGeometry(1, 1, 1);
+
 // ---------- arena walls: crackling energy barrier ----------
 const WALL_H = 16;
 const wallMat = new THREE.ShaderMaterial({
@@ -343,6 +347,105 @@ function bikeTemplate(color) {
     glow: new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, blending: add, depthWrite: false })
   };
   return templates[color];
+}
+
+// ---------- the dangerous horizon: beacon tower, storm clouds, lightning ----------
+const TOWER = new THREE.Vector3(-380, 0, -1280), TOWER_H = 620;
+const beams = {};
+(function buildTower() {
+  const g = new THREE.Group(); g.position.copy(TOWER); g.scale.setScalar(1.8); scene.add(g);
+  const dark = new THREE.MeshBasicMaterial({ color: 0x010206, fog: false });
+  const edge = new THREE.LineBasicMaterial({ color: 0x9fefff, fog: false, transparent: true, opacity: 0.9 });
+  let y = 0;
+  for (let i = 0; i < 9; i++) {
+    const w = 130 * Math.pow(1 - i / 11, 1.3) + 8, h = i < 8 ? 62 : 40;
+    const geo = new THREE.BoxGeometry(w, h, w); const m = new THREE.Mesh(geo, dark); m.position.y = y + h / 2; g.add(m);
+    const l = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edge); l.position.copy(m.position); g.add(l);
+    if (i % 2 === 0) { const ring = new THREE.Mesh(new THREE.BoxGeometry(w + 6, 2.5, w + 6), new THREE.MeshBasicMaterial({ color: 0x5fe6ff, fog: false })); ring.position.y = y + h; g.add(ring); }
+    y += h;
+  }
+  const spire = new THREE.Mesh(new THREE.ConeGeometry(10, 90, 4), dark); spire.position.y = y + 45; g.add(spire);
+  { const sl = new THREE.LineSegments(new THREE.EdgesGeometry(spire.geometry), edge); sl.position.copy(spire.position); g.add(sl); }
+  const top = y + 95;
+  const core = new THREE.Mesh(new THREE.SphereGeometry(9, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })); core.position.y = top; g.add(core);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x9fefff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  halo.scale.set(160, 160, 1); halo.position.y = top; g.add(halo); beams.halo = halo;
+  // vertical beam of light into the clouds
+  const add = (col, op) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+  const b1 = new THREE.Mesh(new THREE.CylinderGeometry(5, 7, 3200, 16, 1, true), add(0xdffaff, 0.55)); b1.position.y = top + 1600; g.add(b1);
+  const b2 = new THREE.Mesh(new THREE.CylinderGeometry(18, 30, 3200, 16, 1, true), add(0x5fd8ff, 0.12)); b2.position.y = top + 1600; g.add(b2);
+  beams.core = b1; beams.glow = b2;
+  // slow sweeping searchlight
+  const pivot = new THREE.Group(); pivot.position.y = top; g.add(pivot);
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(160, 1800, 24, 1, true), add(0x9fefff, 0.05));
+  cone.geometry.translate(0, -900, 0); cone.rotation.x = Math.PI - 0.95; pivot.add(cone); beams.sweep = pivot;
+  // blinking warning lights
+  beams.blinks = [];
+  for (let k = 0; k < 4; k++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xff3020, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    const a = k * Math.PI / 2; sp.position.set(Math.cos(a) * 30, 330, Math.sin(a) * 30); sp.scale.set(40, 40, 1); g.add(sp); beams.blinks.push(sp); }
+})();
+// flat 2D storm clouds around the horizon
+const cloudTex = (seed) => {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256; const x = c.getContext('2d');
+  let r = seed * 9301 + 49297; const rnd = () => (r = (r * 9301 + 49297) % 233280) / 233280;
+  for (let i = 0; i < 70; i++) {
+    const cx = 60 + rnd() * 392, cy = 90 + rnd() * 90 - Math.abs(cx - 256) * 0.12, rad = 30 + rnd() * 70;
+    const gr = x.createRadialGradient(cx, cy, 0, cx, cy, rad);
+    gr.addColorStop(0, 'rgba(70,58,96,0.55)'); gr.addColorStop(0.6, 'rgba(38,30,58,0.35)'); gr.addColorStop(1, 'rgba(20,16,34,0)');
+    x.fillStyle = gr; x.beginPath(); x.arc(cx, cy, rad, 0, Math.PI * 2); x.fill();
+  }
+  const t = new THREE.CanvasTexture(c); return t;
+};
+const cloudTexs = [1, 2, 3, 4, 5].map(cloudTex), clouds = [];
+for (let i = 0; i < 18; i++) {
+  const a = (i / 18) * Math.PI * 2 + Math.random() * 0.25, rr = 1250 + Math.random() * 450, y = 280 + Math.random() * 260;
+  const m = new THREE.SpriteMaterial({ map: cloudTexs[i % 5], color: 0x8a7aa8, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
+  const sp = new THREE.Sprite(m); sp.position.set(Math.cos(a) * rr, y, Math.sin(a) * rr);
+  const w = 700 + Math.random() * 600; sp.scale.set(w, w * 0.42, 1); scene.add(sp);
+  clouds.push({ sp, base: m.color.clone(), flash: 0 });
+}
+// lightning
+const bolts = []; let boltT = 3;
+const boltMat = new THREE.MeshBasicMaterial({ color: 0xf2eeff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+const boltGlow = new THREE.MeshBasicMaterial({ color: 0x9a8cff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+function boltPath(from, to, segs, jag) {
+  const path = new THREE.CurvePath(); let prev = from.clone();
+  for (let i = 1; i <= segs; i++) { const p = from.clone().lerp(to, i / segs); if (i < segs) { p.x += (Math.random() - 0.5) * jag; p.z += (Math.random() - 0.5) * jag; p.y += (Math.random() - 0.5) * jag * 0.3; } path.add(new THREE.LineCurve3(prev, p)); prev = p; }
+  return path;
+}
+function strike() {
+  const c = clouds[Math.floor(Math.random() * clouds.length)], top = c.sp.position.clone(); top.y -= 60;
+  const ground = top.clone(); ground.y = 0; ground.x += (Math.random() - 0.5) * 200; ground.z += (Math.random() - 0.5) * 200;
+  const grp = new THREE.Group();
+  const main = boltPath(top, ground, 14, 120);
+  grp.add(new THREE.Mesh(new THREE.TubeGeometry(main, 60, 2.2, 4, false), boltMat), new THREE.Mesh(new THREE.TubeGeometry(main, 60, 9, 4, false), boltGlow));
+  for (let k = 0; k < 3; k++) { const st = main.getPoint(0.2 + Math.random() * 0.5), en = st.clone().add(new THREE.Vector3((Math.random() - 0.5) * 300, -120 - Math.random() * 160, (Math.random() - 0.5) * 300));
+    grp.add(new THREE.Mesh(new THREE.TubeGeometry(boltPath(st, en, 6, 60), 24, 1.2, 4, false), boltMat)); }
+  scene.add(grp); bolts.push({ grp, life: 0.45 });
+  c.flash = 1; sky.material.uniforms.uFlash.value = 1; sky.material.uniforms.uDir.value.copy(top).sub(camWorld).normalize();
+  const d = top.distanceTo(camWorld); thunder(Math.min(3.5, d / 550), Math.max(0.25, 1.2 - d / 2500));
+  if (Math.random() < 0.35) setTimeout(() => { c.flash = 0.8; sky.material.uniforms.uFlash.value = 0.7; }, 120);
+}
+function thunder(delay, vol) {
+  if (!actx || !noiseBuf) return; const t = actx.currentTime + delay;
+  const s = actx.createBufferSource(); s.buffer = noiseBuf; s.loop = true; s.playbackRate.value = 0.5;
+  const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(700, t); f.frequency.exponentialRampToValueAtTime(90, t + 3);
+  const g = actx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.35 * vol, t + 0.15);
+  g.gain.setValueAtTime(0.3 * vol, t + 0.6); g.gain.linearRampToValueAtTime(0.42 * vol, t + 1.0); g.gain.exponentialRampToValueAtTime(0.0001, t + 4);
+  s.connect(f); f.connect(g); g.connect(mRev ? mRev : actx.destination); g.connect(actx.destination); s.start(t); s.stop(t + 4.2);
+}
+function updateStorm(dt, t) {
+  boltT -= dt; if (boltT <= 0) { boltT = 2.5 + Math.random() * 6; strike(); }
+  for (let i = bolts.length - 1; i >= 0; i--) { const b = bolts[i]; b.life -= dt;
+    b.grp.visible = b.life > 0.3 || Math.random() < 0.6; if (b.life <= 0) { scene.remove(b.grp); b.grp.traverse(o => o.geometry && o.geometry.dispose()); bolts.splice(i, 1); } }
+  const u = sky.material.uniforms.uFlash; u.value *= Math.exp(-dt * 7);
+  for (const c of clouds) { c.flash *= Math.exp(-dt * 5); c.sp.material.color.copy(c.base).multiplyScalar(1 + c.flash * 3.5); }
+  if (beams.sweep) {
+    beams.sweep.rotation.y = t * 0.18;
+    const p = 0.85 + 0.15 * Math.sin(t * 3.1) + 0.05 * Math.sin(t * 17);
+    beams.core.material.opacity = 0.5 * p; beams.glow.material.opacity = 0.12 * p; beams.halo.material.opacity = 0.8 * p;
+    const on = (t % 1.6) < 0.25; for (const b of beams.blinks) b.visible = on;
+  }
 }
 
 // ---------- geometry helpers ----------
@@ -1389,6 +1492,7 @@ function loop() {
   floorMat.uniforms.uCam.value.copy(camWorld); sky.position.copy(camWorld);
   wallMat.uniforms.uT.value = clock.elapsedTime; if (player) wallMat.uniforms.uP.value.set(player.pos.x, player.pos.y);
   wallCrackle(dt);
+  updateStorm(dt, clock.elapsedTime);
   updateAudio();
   updateMotes();
   hudTimer -= dt; if (hudTimer <= 0) { hudTimer = 0.1; drawHud(); if (state !== 'menu') drawMap(); if (cockpit.visible) drawDash(); }
