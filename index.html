@@ -525,7 +525,7 @@ class Bike {
     this.setSeg(this.segs[n - 1], this.points[n - 1], this.pos.x, this.pos.y);
     this.dir = side < 0 ? [dz, -dx] : [-dz, dx];
     this.points.push(this.pos.clone()); this.newSeg();
-    this.yawT = yawOf(this.dir[0], this.dir[1]); this.roll = -side * 0.45;
+    this.yawT = yawOf(this.dir[0], this.dir[1]); this.roll = -side * 0.45; this.turnKick = 1;
     if (this.isPlayer) sfxTurn();
     sendPts(this);
   }
@@ -581,7 +581,7 @@ class Bike {
       this.mesh.rotation.y = this.visYaw;
       const f = (this.speed - MIN_V) / (MAX_V - MIN_V);
       this.humps.scale.y = 0.35 + 0.75 * f;
-      this.roll *= Math.exp(-dt * 5); this.mesh.rotation.z = this.roll;
+      this.roll *= Math.exp(-dt * 5); this.mesh.rotation.z = this.roll; this.turnKick = (this.turnKick || 0) * Math.exp(-dt * 5);
       for (const w of this.wheels) w.rotation.x -= this.speed * dt / 0.65;
       const fl = 0.8 + 0.6 * f + Math.random() * 0.25; this.thr.scale.set(fl, fl, fl);
       const n = this.points.length, last = this.points[n - 1];
@@ -616,7 +616,13 @@ function tone(freq, dur, type = 'square', vol = 0.12) {
   g.gain.setValueAtTime(vol, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
   o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
 }
-function sfxTurn() { tone(880, 0.06, 'triangle', 0.05); }
+function sfxTurn() {
+  if (!actx || !noiseBuf) return; const t = actx.currentTime, vr = renderer.xr.isPresenting;
+  const s = actx.createBufferSource(); s.buffer = noiseBuf; const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2.5;
+  f.frequency.setValueAtTime(3200, t); f.frequency.exponentialRampToValueAtTime(500, t + 0.3);
+  const g = actx.createGain(); g.gain.setValueAtTime(vr ? 0.22 : 0.09, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  s.connect(f); f.connect(g); g.connect(actx.destination); s.start(t); s.stop(t + 0.4);
+}
 function sfxCrash(loud) {
   if (!actx) return;
   const len = actx.sampleRate * 1.2, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
@@ -631,7 +637,7 @@ function sfxCrash(loud) {
 const engines = new Map(); let engBus = null, distCurve = null;
 function makeEngine(b) {
   if (!engBus) {
-    engBus = actx.createGain(); engBus.gain.value = 1; engBus.connect(actx.destination);
+    engBus = actx.createGain(); engBus.gain.value = 1; const lim = actx.createDynamicsCompressor(); lim.threshold.value = -10; lim.ratio.value = 8; lim.attack.value = 0.003; engBus.connect(lim); lim.connect(actx.destination);
     const len = actx.sampleRate * 2; distCurve = actx.createBuffer(1, len, actx.sampleRate); const d = distCurve.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   }
   // ethereal light-cycle hum: chorused glassy tones + a shimmering high whine + airy hiss, no distortion
@@ -662,9 +668,11 @@ function killEngine(b) {
   setTimeout(() => { try { e.o.forEach(o => o.stop()); e.lfo.stop(); e.air.stop(); e.out.disconnect(); } catch (err) {} }, 400);
 }
 const setP = (p, v, t) => { if (p) p.setTargetAtTime(v, t, 0.04); };
+let musLvl = -1;
 function updateAudio() {
   if (!actx) return;
-  const t = actx.currentTime, racing = state === 'play' || state === 'countdown' || state === 'over';
+  const t = actx.currentTime, racing = state === 'play' || state === 'countdown' || state === 'over', vr = renderer.xr.isPresenting;
+  if (mBus) { const want = M.on && !(vr && racing) ? 0.55 : 0; if (want !== musLvl) { musLvl = want; mBus.gain.setTargetAtTime(want, t, 0.5); } }
   // listener follows the camera
   const L = actx.listener, fw = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
   if (L.positionX) { L.positionX.value = camWorld.x; L.positionY.value = camWorld.y; L.positionZ.value = camWorld.z;
@@ -682,13 +690,14 @@ function updateAudio() {
       const vr = ((b.dir[0] * b.speed - (player.alive ? player.dir[0] * player.speed : 0)) * rx + (b.dir[1] * b.speed - (player.alive ? player.dir[1] * player.speed : 0)) * rz) / r;
       e.dop += (Math.min(1.35, Math.max(0.75, 160 / (160 - Math.max(-120, Math.min(120, vr))))) - e.dop) * 0.25;
     } else e.dop = 1;
-    const base = (62 + b.speed * 2.3) * e.seed * e.dop;
+    const k = b.turnKick || 0; // momentum dip after a 90° turn
+    const base = (62 + b.speed * 2.3) * e.seed * e.dop * (1 - 0.16 * k);
     e.o.forEach(o => setP(o.frequency, base * o.mul, t));
     setP(e.vib.frequency, 4.5 + f * 3, t);
-    setP(e.bp.frequency, base * (1.6 + f * 1.4), t);
+    setP(e.bp.frequency, base * (1.6 + f * 1.4 + k * 1.6), t);
     setP(e.airF.frequency, 1500 + b.speed * 45, t);
-    setP(e.airG.gain, 0.04 + f * 0.12, t);
-    setP(e.out.gain, b.isPlayer ? 0.07 + f * 0.04 : 0.2 + f * 0.08, t);
+    setP(e.airG.gain, 0.04 + f * 0.12 + k * 0.3, t);
+    setP(e.out.gain, (b.isPlayer ? 0.07 + f * 0.04 : 0.2 + f * 0.08) * (vr ? (b.isPlayer ? 3.4 : 2.2) : 1), t);
     if (e.pan) { const pp = e.pan; if (pp.positionX) { pp.positionX.value = b.pos.x; pp.positionY.value = 0.8; pp.positionZ.value = b.pos.y; } else pp.setPosition(b.pos.x, 0.8, b.pos.y); }
   }
   for (const [b] of engines) if (!bikes.includes(b)) killEngine(b);
@@ -938,7 +947,7 @@ async function enterVR(solo) {
     const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
     await renderer.xr.setSession(s);
     try { renderer.xr.setFoveation(1); } catch (e) {}
-    hudPlane.visible = true; mapPlane.visible = true; $('touch').style.display = 'none'; $('mini').style.display = 'none';
+    hudPlane.visible = true; mapPlane.visible = true; camMode = 'cockpit'; updCam(); $('touch').style.display = 'none'; $('mini').style.display = 'none';
     s.addEventListener('end', () => { hudPlane.visible = false; mapPlane.visible = false; });
     if (solo) startRound();
   } catch (e) { $('note').textContent = 'Could not start VR: ' + e.message; }
@@ -1121,7 +1130,7 @@ function sendPts(b) {
   if (mode !== 'host') return;
   net.send({ type: 'pts', i: bikes.indexOf(b), p: b.points.flatMap(q => [q.x, q.y]), x: b.pos.x, z: b.pos.y, d: b.dir }, opp);
 }
-function setDir(b, dx, dz) { if (b.dir[0] !== dx || b.dir[1] !== dz) { b.dir = [dx, dz]; b.yawT = yawOf(dx, dz); } }
+function setDir(b, dx, dz) { if (b.dir[0] !== dx || b.dir[1] !== dz) { b.dir = [dx, dz]; b.yawT = yawOf(dx, dz); b.turnKick = 1; } }
 function setPts(b, m) {
   const P = []; for (let i = 0; i < m.p.length; i += 2) P.push(new THREE.Vector2(m.p[i], m.p[i + 1]));
   while (b.trail.children.length) b.trail.remove(b.trail.children[0]);
@@ -1180,6 +1189,79 @@ function endMatchLocal() {
   mode = 'solo'; opp = null; state = 'menu'; clearScene(); setMsg('');
   for (const id of ['hud', 'spd', 'mini', 'touch', 'mpBar']) $(id).style.display = 'none';
   $('menu').style.display = 'flex'; showPanel('p2'); addShowroom(); hello(); renderLobby();
+}
+
+
+// ---------- cockpit interior (first-person) ----------
+const cockpit = new THREE.Group(); cockpit.visible = false; scene.add(cockpit);
+const EYE = 1.25; let cockpitColor = null, rigY = -0.35;
+const dashCan = document.createElement('canvas'); dashCan.width = 512; dashCan.height = 160;
+const dctx = dashCan.getContext('2d'), dashTex = new THREE.CanvasTexture(dashCan);
+function buildCockpit(color) {
+  if (cockpitColor === color) return; cockpitColor = color;
+  while (cockpit.children.length) cockpit.remove(cockpit.children[0]);
+  const C = new THREE.Color(color), W = new THREE.Color(0xffffff);
+  const body = new THREE.MeshPhysicalMaterial({ color: C.clone().multiplyScalar(0.55), metalness: 0.35, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.03, emissive: C, emissiveIntensity: 0.08, side: THREE.DoubleSide });
+  const dark = new THREE.MeshPhysicalMaterial({ color: 0x04060a, metalness: 0.4, roughness: 0.25, clearcoat: 1 });
+  const hot = new THREE.MeshBasicMaterial({ color: C.clone().lerp(W, 0.55) }), neon = new THREE.MeshBasicMaterial({ color });
+  const tubeP = (pts, r, m) => cockpit.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), 64, r, 6, false), m));
+  // windscreen frame: lower arc, side pillars sweeping overhead, centre spine
+  tubeP([[-0.56, 0.98, -0.78], [-0.3, 1.0, -1.02], [0, 1.01, -1.1], [0.3, 1.0, -1.02], [0.56, 0.98, -0.78]], 0.014, hot);
+  for (const sd of [-1, 1]) {
+    tubeP([[sd * 0.56, 0.98, -0.78], [sd * 0.55, 1.32, -0.45], [sd * 0.47, 1.53, 0.05], [sd * 0.4, 1.5, 0.55]], 0.012, neon);
+    tubeP([[sd * 0.56, 0.98, -0.78], [sd * 0.61, 0.96, -0.1], [sd * 0.56, 0.97, 0.6]], 0.02, hot);
+  }
+  tubeP([[0, 1.62, -0.25], [0, 1.66, -0.05], [0, 1.6, 0.55]], 0.009, neon);
+  // faint reflective canopy glass
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshPhysicalMaterial({ color: C.clone().lerp(W, 0.6), transparent: true, opacity: 0.06, roughness: 0.02, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false, envMapIntensity: 2.5 }));
+  glass.scale.set(0.57, 0.68, 1.15); glass.position.set(0, 0.98, -0.25); cockpit.add(glass);
+  // glossy hood stretching ahead to the nose
+  const N = 24, pos = [], idx = [];
+  for (let j = 0; j <= N; j++) { const t = j / N, z = -1.08 - 1.9 * t, w = 0.58 * Math.pow(1 - t, 0.75) + 0.03, y = 0.97 - 0.45 * Math.pow(t, 1.6);
+    pos.push(-w, y - 0.04, z, 0, y + 0.02, z, w, y - 0.04, z); }
+  for (let j = 0; j < N; j++) { const a = j * 3; idx.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5); }
+  const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); hg.setIndex(idx); hg.computeVertexNormals();
+  cockpit.add(new THREE.Mesh(hg, body));
+  const edge = sd => { const p = []; for (let j = 0; j <= N; j++) { const t = j / N; p.push([sd * (0.58 * Math.pow(1 - t, 0.75) + 0.03), 0.97 - 0.45 * Math.pow(t, 1.6) - 0.035, -1.08 - 1.9 * t]); } return p; };
+  tubeP(edge(-1), 0.014, hot); tubeP(edge(1), 0.014, hot);
+  { const p = []; for (let j = 0; j <= N; j++) { const t = j / N; p.push([0, 0.97 - 0.45 * Math.pow(t, 1.6) + 0.035, -1.08 - 1.9 * t]); } tubeP(p, 0.012, neon); }
+  // dashboard with a live screen (speed + minimap)
+  const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.25), dark); dash.position.set(0, 0.95, -0.715); dash.rotation.x = -0.62; cockpit.add(dash);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.206), new THREE.MeshBasicMaterial({ map: dashTex, transparent: true }));
+  scr.position.set(0, 0.957, -0.718); scr.rotation.x = -0.62; scr.renderOrder = 2; cockpit.add(scr);
+}
+function drawDash() {
+  const c = dctx, sp = player ? player.speed : 0, f = Math.max(0, Math.min(1, (sp - MIN_V) / (MAX_V - MIN_V))), col = cssOf(player ? player.color : BLUE);
+  c.clearRect(0, 0, 512, 160); c.fillStyle = 'rgba(0,8,16,0.85)'; c.fillRect(0, 0, 512, 160);
+  c.strokeStyle = col; c.lineWidth = 3; c.strokeRect(2, 2, 508, 156);
+  c.shadowColor = col; c.shadowBlur = 14; c.fillStyle = '#eaffff'; c.textAlign = 'left';
+  c.font = '800 64px Orbitron, sans-serif'; c.fillText(Math.round(sp * 3.6), 22, 82);
+  c.font = '500 20px Orbitron, sans-serif'; c.fillStyle = col; c.fillText('KM/H', 24, 112);
+  c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(22, 126, 300, 14); c.fillStyle = col; c.fillRect(22, 126, 300 * f, 14);
+  c.shadowBlur = 0; c.drawImage(mini, 352, 6, 148, 148);
+  dashTex.needsUpdate = true;
+}
+// ---------- speed motes: glowing particles streaming past ----------
+const MOTES = 360, motePos = new Float32Array(MOTES * 3), moteGeo = new THREE.BufferGeometry();
+moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({ color: 0xaff4ff, size: 0.14, map: glowTex, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+motes.frustumCulled = false; motes.visible = false; scene.add(motes);
+let motesInit = false;
+function placeMote(i, cx, cz, fx, fz, anywhere) {
+  const along = anywhere ? (Math.random() * 2 - 1) * 70 : 40 + Math.random() * 40, lat = (Math.random() * 2 - 1) * 26;
+  motePos[i * 3] = cx + fx * along - fz * lat; motePos[i * 3 + 1] = 0.3 + Math.random() * 6; motePos[i * 3 + 2] = cz + fz * along + fx * lat;
+}
+function updateMotes() {
+  const on = player && (state === 'play' || state === 'countdown');
+  motes.visible = !!on; if (!on) { motesInit = false; return; }
+  const fx = -Math.sin(rigYaw), fz = -Math.cos(rigYaw), cx = camWorld.x, cz = camWorld.z;
+  for (let i = 0; i < MOTES; i++) {
+    if (!motesInit) { placeMote(i, cx, cz, fx, fz, true); continue; }
+    const dx = motePos[i * 3] - cx, dz = motePos[i * 3 + 2] - cz, a = dx * fx + dz * fz, l = -dx * fz + dz * fx;
+    if (a < -15 || a > 85 || Math.abs(l) > 30) placeMote(i, cx, cz, fx, fz, false);
+  }
+  motesInit = true; moteGeo.attributes.position.needsUpdate = true;
 }
 
 // ---------- main loop ----------
@@ -1261,23 +1343,31 @@ function loop() {
     else rigYaw = angLerp(rigYaw, player.yawT, 1 - Math.exp(-dt * 7));
     const fx = -Math.sin(rigYaw), fz = -Math.cos(rigYaw), p = player.pos;
     if (camMode === 'chase') rig.position.set(p.x - fx * 8.5 - fz * 1.6, 3.0, p.y - fz * 8.5 + fx * 1.6);
-    else rig.position.set(p.x + fx * 0.3, -0.2, p.y + fz * 0.3);
+    else { const headY = xr ? camera.position.y : 1.6; rigY += ((EYE - headY) - rigY) * Math.min(1, dt * (xr ? 0.6 : 10)); rig.position.set(p.x + fx * 0.3, rigY, p.y + fz * 0.3); }
     rig.rotation.y = rigYaw;
     player.mesh.visible = player.alive && camMode === 'chase';
+    buildCockpit(player.color);
+    cockpit.visible = camMode === 'cockpit' && player.alive && state !== 'menu';
+    cockpit.position.set(rig.position.x, 0, rig.position.z); cockpit.rotation.y = rigYaw;
+    const hy = xr ? camera.position.y : 1.6;
+    if (camMode === 'cockpit') { hudPlane.position.set(0, hy + 0.12, -2.6); hudPlane.rotation.x = 0; mapPlane.visible = false; }
+    else { hudPlane.position.set(0, hy - 0.55, -1.6); hudPlane.rotation.x = -0.35; mapPlane.visible = xr; }
     if (!xr) {
       camera.position.set(0, 1.6, 0);
       camera.rotation.set(camMode === "chase" ? -0.3 : -0.04, 0, 0);
       const f = (player.speed - MIN_V) / (MAX_V - MIN_V);
       const fov = 68 + 24 * f; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 5); camera.updateProjectionMatrix(); }
     }
-  } else if (!xr) { rig.rotation.y += dt * 0.25; rig.position.set(Math.sin(rig.rotation.y) * 9, 0.6, Math.cos(rig.rotation.y) * 9); camera.rotation.set(-0.12, 0, 0); }
+  } else { cockpit.visible = false; }
+  if (!player && !xr) { rig.rotation.y += dt * 0.25; rig.position.set(Math.sin(rig.rotation.y) * 9, 0.6, Math.cos(rig.rotation.y) * 9); camera.rotation.set(-0.12, 0, 0); }
 
   camera.getWorldPosition(camWorld);
   floorMat.uniforms.uCam.value.copy(camWorld); sky.position.copy(camWorld);
   wallMat.uniforms.uT.value = clock.elapsedTime; if (player) wallMat.uniforms.uP.value.set(player.pos.x, player.pos.y);
   wallCrackle(dt);
   updateAudio();
-  hudTimer -= dt; if (hudTimer <= 0) { hudTimer = 0.1; drawHud(); if (state !== 'menu') drawMap(); }
+  updateMotes();
+  hudTimer -= dt; if (hudTimer <= 0) { hudTimer = 0.1; drawHud(); if (state !== 'menu') drawMap(); if (cockpit.visible) drawDash(); }
   renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(loop);
