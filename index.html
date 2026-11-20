@@ -13,6 +13,14 @@ canvas{display:block}
 #spd{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;pointer-events:none;text-align:center;font-size:13px;letter-spacing:2px;color:#9fefff;text-shadow:0 0 8px #2fd8ff}
 #bar{width:220px;height:8px;border:1px solid #2fd8ff;border-radius:4px;margin-top:6px;overflow:hidden}#bar i{display:block;height:100%;background:linear-gradient(90deg,#2fd8ff,#fff);width:30%}
 #mini{position:fixed;left:50%;bottom:62px;transform:translateX(-50%);width:clamp(110px,26vw,150px);height:clamp(110px,26vw,150px);display:none;pointer-events:none;border-radius:6px}
+ #start{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:20px;box-sizing:border-box;background:linear-gradient(#0000 0%,#0000 45%,#000b 100%)}
+.st-title{font-size:clamp(46px,14vw,150px);font-weight:800;letter-spacing:10px;color:#dffaff;text-shadow:0 0 20px #2fd8ff,0 0 60px #2fd8ff,0 0 120px #2fd8ff;animation:pulse 3s ease-in-out infinite}
+.st-title span{color:#ffd0c8;text-shadow:0 0 20px #ff3a2a,0 0 60px #ff3a2a,0 0 120px #ff3a2a}
+.st-tag{font-size:clamp(12px,3.2vw,22px);letter-spacing:6px;color:#ffe9ff;text-shadow:0 0 12px #b04aff,0 0 30px #b04aff}
+.st-btns{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:24px}
+button.big{font-size:clamp(18px,4.6vw,26px);padding:18px 34px;border-radius:14px;letter-spacing:4px}
+#stNote{font-size:12px;letter-spacing:1px;opacity:.75;max-width:520px}
+@keyframes pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.35)}}
 .panel{display:flex;flex-direction:column;align-items:center;gap:12px}
 #tag{font-family:inherit;font-size:16px;letter-spacing:3px;text-transform:uppercase;padding:11px 14px;width:170px;border-radius:10px;border:2px solid #2fd8ff;background:#001018;color:#dffaff;outline:none;text-align:center}
 .sw{width:34px;height:34px;padding:0;border-radius:50%;border:3px solid #0008;box-shadow:0 0 10px currentColor}.sw.sel{border-color:#fff;transform:scale(1.18)}
@@ -51,7 +59,13 @@ button.small{padding:8px 14px;font-size:13px}
   <div><button class="tb" id="tL">◀</button><button class="tb" id="tR">▶</button></div>
   <div><button class="tb" id="tD">▼</button><button class="tb" id="tU">▲</button></div>
 </div>
-<div id="menu">
+<div id="start">
+  <div class="st-title">LIGHT<span>BIKES</span></div>
+  <div class="st-tag">THE GRID IS A DANGEROUS PLACE</div>
+  <div class="st-btns"><button id="stVR" class="big" style="display:none">ENTER VR</button><button id="stFlat" class="big red">PLAY ON SCREEN</button></div>
+  <div id="stNote"></div>
+</div>
+<div id="menu" style="display:none">
   <h1>LIGHT<span>BIKES</span></h1>
   <div id="pMode" class="panel">
     <p>Ride the grid. Your bike leaves a wall of light. Make your rivals crash into your trail and don't touch any wall yourself. Grab a gold pickup to wipe every trail off the grid. The faster you go, the higher your tail fin.</p>
@@ -1000,6 +1014,7 @@ function startRound() {
   showHud();
 }
 function showHud() {
+  $('leaveBtn').textContent = mode === 'solo' ? 'MENU' : 'LEAVE'; if (!renderer.xr.isPresenting) $('mpBar').style.display = 'flex';
   $('menu').style.display = 'none'; $('hud').style.display = 'flex'; $('spd').style.display = 'block'; if (!renderer.xr.isPresenting) { $('mini').style.display = 'block'; $('mini').classList.toggle('corner', !isTouch); } if (isTouch && !renderer.xr.isPresenting) $('touch').style.display = 'flex';
 }
 function endRound(text, color) { state = 'over'; overT = 0; setMsg(text, '', color); }
@@ -1047,7 +1062,7 @@ $('b2p').onclick = () => { initAudio(); showPanel('p2'); buildSwatches(); refres
 $('back1').onclick = () => showPanel('pMode');
 $('back2').onclick = () => { inLobby = false; hello(); showPanel('pMode'); refreshShowroom(); };
 $('joinL').onclick = joinLobby;
-$('leaveBtn').onclick = () => leaveMatch(true);
+$('leaveBtn').onclick = () => mode === 'solo' ? backToMenu() : leaveMatch(true);
 $('vrIn').onclick = () => enterVR(false);
 $('mus').onclick = () => { initAudio(); setMusic(!M.on); };
 addEventListener('pointerdown', () => initAudio(), { once: true });
@@ -1074,11 +1089,15 @@ function readXR() {
     for (let i = 0; i < gp.buttons.length; i++) st.prev[i] = pr(i);
   }
 }
+let onStart = true;
 if (navigator.xr && navigator.xr.isSessionSupported) {
   navigator.xr.isSessionSupported('immersive-vr').then(ok => {
-    if (ok) { $('vr').style.display = ''; $('vrIn').style.display = ''; } else $('note').textContent = 'VR not available in this view. On a Quest, open this page directly in the Quest browser.';
+    if (ok) $('stVR').style.display = ''; else $('stNote').textContent = 'For VR, open simy-p.github.io/LightBikes in the Quest browser.';
   }).catch(() => {});
-} else $('note').textContent = 'No WebXR here. Open it in the Quest browser to ride in VR.';
+} else $('stNote').textContent = 'For VR, open simy-p.github.io/LightBikes in the Quest browser.';
+function leaveStart() { onStart = false; $('start').style.display = 'none'; }
+$('stFlat').onclick = () => { initAudio(); leaveStart(); $('menu').style.display = 'flex'; showPanel('pMode'); refreshShowroom(); };
+$('stVR').onclick = async () => { if (await enterVR(false)) { leaveStart(); refreshShowroom(); } };
 $('vr').onclick = () => enterVR(true);
 async function enterVR(solo) {
   initAudio();
@@ -1087,9 +1106,131 @@ async function enterVR(solo) {
     await renderer.xr.setSession(s);
     try { renderer.xr.setFoveation(1); } catch (e) {}
     hudPlane.visible = true; mapPlane.visible = true; camMode = 'cockpit'; updCam(); $('touch').style.display = 'none'; $('mini').style.display = 'none';
-    s.addEventListener('end', () => { hudPlane.visible = false; mapPlane.visible = false; });
+    s.addEventListener('end', () => { hudPlane.visible = false; mapPlane.visible = false; VRP.kb = false;
+      if (state === 'menu') { onStart = true; $('start').style.display = 'flex'; $('menu').style.display = 'none'; } });
     if (solo) startRound();
-  } catch (e) { $('note').textContent = 'Could not start VR: ' + e.message; }
+    return true;
+  } catch (e) { $('stNote').textContent = 'Could not start VR: ' + e.message; return false; }
+}
+
+
+// ---------- in-VR menu: a floating panel that mirrors the on-screen menu; aim a controller and pull the trigger ----------
+const VRP = { hits: [], hover: [], kb: false, t: 0 };
+const vCan = document.createElement('canvas'); vCan.width = 1024; vCan.height = 1024;
+const vctx = vCan.getContext('2d'), vTex = new THREE.CanvasTexture(vCan);
+const vPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.25), new THREE.MeshBasicMaterial({ map: vTex, transparent: true, depthTest: false, fog: false }));
+vPanel.renderOrder = 1000; vPanel.visible = false; rig.add(vPanel);
+const vRay = new THREE.Raycaster(), vM = new THREE.Matrix4();
+const ctrls = [0, 1].map(i => {
+  const c = renderer.xr.getController(i);
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
+    new THREE.LineBasicMaterial({ color: 0x9fefff, transparent: true, opacity: 0.85, depthTest: false, fog: false }));
+  line.scale.z = 4; line.renderOrder = 1001; line.visible = false; c.add(line);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, fog: false })); dot.renderOrder = 1002; dot.visible = false; rig.add(dot);
+  c.userData = { line, dot }; rig.add(c);
+  c.addEventListener('select', () => vrSelect(c));
+  return c;
+});
+function vrUV(c) {
+  vM.identity().extractRotation(c.matrixWorld);
+  vRay.ray.origin.setFromMatrixPosition(c.matrixWorld); vRay.ray.direction.set(0, 0, -1).applyMatrix4(vM);
+  const h = vRay.intersectObject(vPanel)[0]; return h ? { u: h.uv.x * 1024, v: (1 - h.uv.y) * 1024, p: h.point } : null;
+}
+function vrSelect(c) {
+  if (!vPanel.visible) return; const h = vrUV(c); if (!h) return;
+  const hit = VRP.hits.find(b => h.u >= b.x && h.u <= b.x + b.w && h.v >= b.y && h.v <= b.y + b.h && !b.disabled);
+  if (hit) { initAudio(); tone(990, 0.05, 'triangle', 0.05); hit.act(); drawVR(true); }
+}
+const visEl = el => el && getComputedStyle(el).display !== 'none';
+const KB = ['1234567890', 'QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
+function vrModel() {
+  if (VRP.kb) {
+    const tg = $('tag'), L = [{ text: 'BIKE TAG', size: 30, dim: true }, { text: (tg.value || ' ') + '_', size: 58 }];
+    for (const r of KB) L.push({ btns: [...r].map(ch => ({ label: ch, act: () => { if (tg.value.length < 12) tg.value += ch; } })) });
+    L.push({ btns: [{ label: 'SPACE', act: () => { if (tg.value.length < 12 && tg.value) tg.value += ' '; } }, { label: 'DELETE', red: true, act: () => { tg.value = tg.value.slice(0, -1); } }, { label: 'DONE', act: () => { VRP.kb = false; } }] });
+    return L;
+  }
+  if (visEl($('dlg'))) {
+    const L = $('dtext').innerText.split('\n').filter(Boolean).map((t, i) => ({ text: t, size: i ? 30 : 56 }));
+    if ($('dsub').textContent) L.push({ text: $('dsub').textContent, size: 28, dim: true });
+    L.push({ btns: [...$('dbtns').children].map(b => ({ label: b.textContent, red: b.classList.contains('red'), act: () => b.click() })) });
+    return L;
+  }
+  if (state === 'over' && mode === 'solo') return [{ text: msgText, size: 60 }, { text: overInfo, size: 28, dim: true },
+    { btns: [{ label: 'RACE AGAIN', act: () => startRound() }, { label: 'MENU', red: true, act: backToMenu }] }];
+  if (state !== 'menu') return null;
+  const panel = ['pMode', 'p1', 'p2'].map($).find(visEl); if (!panel) return null;
+  const L = [];
+  for (const ch of panel.children) {
+    if (!visEl(ch) || ch.id === 'keys' || ch.id === 'note') continue;
+    if (ch.classList.contains('row')) {
+      const items = [...ch.children].filter(visEl).map(el => {
+        if (el.tagName === 'BUTTON') return { label: el.classList.contains('sw') ? '' : el.textContent, swatch: el.classList.contains('sw') ? el.style.background : null,
+          sel: el.classList.contains('sel'), red: el.classList.contains('red'), disabled: el.disabled, act: () => el.click() };
+        if (el.tagName === 'INPUT') return { label: el.value ? el.value : 'SET TAG', input: true, act: () => { VRP.kb = true; } };
+        return { text: el.textContent };
+      });
+      if (items.length && items.every(x => x.text !== undefined)) L.push({ text: items.map(x => x.text).join('  '), size: 30 });
+      else L.push({ btns: items.filter(x => x.text === undefined) });
+    } else if (ch.id === 'plist') { for (const b of ch.children) L.push({ btns: [{ label: b.textContent, disabled: b.disabled, border: b.style.borderColor, act: () => b.click() }] }); }
+    else if (ch.tagName === 'BUTTON') L.push({ btns: [{ label: ch.textContent, red: ch.classList.contains('red'), act: () => ch.click() }] });
+    else if (ch.textContent.trim() && ch.textContent.length < 260) L.push({ text: ch.textContent.trim(), size: ch.tagName === 'P' ? 24 : 28, dim: ch.tagName === 'P' });
+  }
+  return L;
+}
+function wrapText(c, text, maxW) { const words = text.split(' '), out = []; let line = '';
+  for (const w of words) { const t = line ? line + ' ' + w : w; if (c.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; } if (line) out.push(line); return out; }
+function drawVR(force) {
+  const model = renderer.xr.isPresenting ? vrModel() : null;
+  vPanel.visible = !!model; for (const c of ctrls) c.userData.line.visible = vPanel.visible;
+  if (!model) return;
+  const c = vctx, W = 1024; c.clearRect(0, 0, W, W);
+  c.fillStyle = 'rgba(0,10,22,0.9)'; c.strokeStyle = '#5fe6ff'; c.lineWidth = 6; c.shadowColor = '#2fd8ff'; c.shadowBlur = 24;
+  c.beginPath(); c.roundRect(12, 12, W - 24, W - 24, 36); c.fill(); c.stroke(); c.shadowBlur = 0;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.font = '800 72px Orbitron, sans-serif'; c.shadowBlur = 20;
+  c.fillStyle = '#dffaff'; c.shadowColor = '#2fd8ff'; c.fillText('LIGHT', W / 2 - 120, 92); c.fillStyle = '#ffd0c8'; c.shadowColor = '#ff3a2a'; c.fillText('BIKES', W / 2 + 140, 92); c.shadowBlur = 0;
+  let y = 170; VRP.hits = [];
+  for (const ln of model) {
+    if (ln.text !== undefined) {
+      c.font = `${ln.size >= 50 ? 800 : 500} ${ln.size}px Orbitron, sans-serif`; c.fillStyle = ln.dim ? 'rgba(220,245,255,0.75)' : '#eaffff';
+      for (const t of wrapText(c, ln.text, 900)) { c.fillText(t, W / 2, y + ln.size * 0.6); y += ln.size * 1.3; }
+      y += 10; continue;
+    }
+    const bs = ln.btns; if (!bs.length) continue;
+    const sw = bs.every(b => b.swatch), h = sw ? 74 : (bs.length > 6 ? 70 : 84), gap = sw ? 22 : 14;
+    const w = sw ? 74 : Math.min(420, (900 - gap * (bs.length - 1)) / bs.length); let x = (W - (w * bs.length + gap * (bs.length - 1))) / 2;
+    for (const b of bs) {
+      const hov = VRP.hover.some(p => p.u >= x && p.u <= x + w && p.v >= y && p.v <= y + h);
+      const col = b.border || (b.red ? '#ff6a5a' : '#5fe6ff');
+      c.globalAlpha = b.disabled ? 0.4 : 1;
+      if (b.swatch) { c.fillStyle = b.swatch; c.beginPath(); c.arc(x + w / 2, y + h / 2, w / 2 - (b.sel ? 0 : 6), 0, Math.PI * 2); c.fill();
+        c.lineWidth = b.sel ? 7 : 3; c.strokeStyle = b.sel ? '#ffffff' : 'rgba(0,0,0,0.5)'; c.stroke(); if (hov) { c.strokeStyle = '#ffffff'; c.lineWidth = 3; c.beginPath(); c.arc(x + w / 2, y + h / 2, w / 2 + 6, 0, 7); c.stroke(); } }
+      else {
+        c.fillStyle = b.sel ? col : (hov ? 'rgba(95,230,255,0.28)' : (b.input ? 'rgba(0,16,24,0.9)' : 'rgba(2,32,46,0.9)'));
+        c.strokeStyle = col; c.lineWidth = hov ? 5 : 3; c.shadowColor = col; c.shadowBlur = hov ? 22 : 10;
+        c.beginPath(); c.roundRect(x, y, w, h, 16); c.fill(); c.stroke(); c.shadowBlur = 0;
+        c.fillStyle = b.sel ? '#001018' : '#eaffff'; let fs = h > 80 ? 32 : 30; c.font = `600 ${fs}px Orbitron, sans-serif`;
+        while (c.measureText(b.label).width > w - 20 && fs > 14) { fs -= 2; c.font = `600 ${fs}px Orbitron, sans-serif`; }
+        c.fillText(b.label, x + w / 2, y + h / 2 + 1);
+      }
+      c.globalAlpha = 1;
+      VRP.hits.push({ x, y, w, h, act: b.act, disabled: b.disabled });
+      x += w + gap;
+    }
+    y += h + 18;
+  }
+  c.font = '500 22px Orbitron, sans-serif'; c.fillStyle = 'rgba(200,240,255,0.6)'; c.fillText('Aim with either controller · pull the trigger to choose', W / 2, W - 48);
+  vTex.needsUpdate = true;
+}
+function updateVRMenu(dt) {
+  const xr = renderer.xr.isPresenting;
+  if (!xr) { vPanel.visible = false; for (const c of ctrls) { c.userData.line.visible = false; c.userData.dot.visible = false; } return; }
+  vPanel.position.set(0, camera.position.y - 0.05, -1.55);
+  VRP.hover = [];
+  for (const c of ctrls) { const h = vPanel.visible ? vrUV(c) : null; c.userData.dot.visible = !!h;
+    if (h) { VRP.hover.push(h); c.userData.dot.position.copy(rig.worldToLocal(h.p.clone())); c.userData.line.scale.z = c.position.distanceTo(c.userData.dot.position); } else c.userData.line.scale.z = 4; }
+  VRP.t -= dt; if (VRP.t <= 0) { VRP.t = 0.08; drawVR(); }
 }
 
 // ---------- minimap ----------
@@ -1353,6 +1494,13 @@ function oppGone() {
   showDlg(esc(t) + '<small>left the game.</small>', [['OK', closeDlg]]);
 }
 function leaveMatch(notify) { if (notify && net && opp) net.send({ type: 'bye' }, opp); endMatchLocal(); closeDlg(); }
+function backToMenu() {
+  if (mode !== 'solo') { leaveMatch(true); return; }
+  state = 'menu'; clearScene(); setMsg(''); closeDlg();
+  for (const id of ['hud', 'spd', 'mini', 'touch', 'mpBar']) $(id).style.display = 'none';
+  if (!renderer.xr.isPresenting) $('menu').style.display = 'flex';
+  showPanel('pMode'); addShowroom();
+}
 function endMatchLocal() {
   mode = 'solo'; opp = null; state = 'menu'; clearScene(); setMsg('');
   for (const id of ['hud', 'spd', 'mini', 'touch', 'mpBar']) $(id).style.display = 'none';
@@ -1486,7 +1634,7 @@ function loop() {
       }
     } else if (state === 'over') {
       overT += dt;
-      if (mode !== 'solo') { if (overT > 1.2 && !rmShown && !renderer.xr.isPresenting) showRematch(); else if (overT > 1.2 && !subText) updRematch(); }
+      if (mode !== 'solo') { if (overT > 1.2 && !rmShown) showRematch(); else if (overT > 1.2 && !subText) updRematch(); }
       else {
         if (overT > 1.0 && !subText) setMsg(msgText, (overInfo ? overInfo + ' · ' : '') + (isTouch ? 'tap to go' : (xr ? 'press A' : 'Space or click')), msgColor);
         if (overT > 7) startRound();
@@ -1527,7 +1675,13 @@ function loop() {
       const fov = 68 + 24 * f; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 5); camera.updateProjectionMatrix(); }
     }
   } else { cockpit.visible = false; }
-  if (!player && !xr) { rig.rotation.y += dt * 0.25; rig.position.set(Math.sin(rig.rotation.y) * 9, 0.6, Math.cos(rig.rotation.y) * 9); camera.rotation.set(-0.12, 0, 0); }
+  if (!player && !xr) {
+    if (onStart) { let z = rig.position.z - dt * 45; if (z < -200 || z > 235 || Math.abs(rig.position.x) > 1) z = 230; rig.position.set(0, 5, z); rig.rotation.y = 0; camera.rotation.set(0.04, 0, 0); camera.position.set(0, 1.6, 0); }
+    else { rig.rotation.y += dt * 0.25; rig.position.set(Math.sin(rig.rotation.y) * 9, 0.6, Math.cos(rig.rotation.y) * 9); camera.rotation.set(-0.12, 0, 0); }
+  }
+  if (!player && xr) { rig.position.set(0, 0, 7.5); rig.rotation.y = 0; mapPlane.visible = false; }
+  hudPlane.visible = xr && state !== 'menu';
+  updateVRMenu(dt);
 
   camera.getWorldPosition(camWorld);
   floorMat.uniforms.uCam.value.copy(camWorld); sky.position.copy(camWorld);
