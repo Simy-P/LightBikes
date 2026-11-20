@@ -506,7 +506,7 @@ class Bike {
     this.yawT = this.visYaw = yawOf(dx, dz);
     this.rand = 1 + Math.random() * 2; this.newSeg();
   }
-  dispose() { scene.remove(this.mesh); scene.remove(this.trail); }
+  dispose() { scene.remove(this.mesh); scene.remove(this.trail); if (actx) killEngine(this); }
   newSeg() {
     const core = new THREE.Mesh(boxGeo, this.core), glow = new THREE.Mesh(boxGeo, this.glowMat);
     this.trail.add(core, glow); this.segs.push([core, glow]);
@@ -627,15 +627,62 @@ function sfxCrash(loud) {
   s.connect(f); f.connect(g); g.connect(actx.destination); s.start();
   tone(loud ? 160 : 320, 0.7, 'sawtooth', 0.08);
 }
+// ---------- engines: one aggressive, speed-tracking engine per bike; rivals are positioned in 3D ----------
+const engines = new Map(); let engBus = null, distCurve = null;
+function makeEngine(b) {
+  if (!engBus) {
+    engBus = actx.createGain(); engBus.gain.value = 1; engBus.connect(actx.destination);
+    const n = 1024; distCurve = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; distCurve[i] = Math.tanh(x * 3.2); }
+  }
+  const e = { seed: 0.97 + Math.random() * 0.06 };
+  e.out = actx.createGain(); e.out.gain.value = 0;
+  e.filt = actx.createBiquadFilter(); e.filt.type = 'lowpass'; e.filt.Q.value = 7;
+  e.shaper = actx.createWaveShaper(); e.shaper.curve = distCurve; e.shaper.oversample = '2x';
+  e.pre = actx.createGain(); e.pre.gain.value = 0.6;
+  e.am = actx.createGain(); e.am.gain.value = 0.65;                 // "firing" growl
+  e.lfo = actx.createOscillator(); e.lfo.type = 'square';
+  e.lfoG = actx.createGain(); e.lfoG.gain.value = 0.35; e.lfo.connect(e.lfoG); e.lfoG.connect(e.am.gain);
+  e.o = [['sawtooth', 1, 0], ['square', 0.5, 0], ['sawtooth', 1.007, 0], ['sine', 0.25, 0]].map(([type, mul]) => {
+    const o = actx.createOscillator(); o.type = type; o.mul = mul; o.connect(e.pre); o.start(); return o; });
+  e.pre.connect(e.shaper); e.shaper.connect(e.filt); e.filt.connect(e.am); e.am.connect(e.out); e.lfo.start();
+  if (b.isPlayer) e.out.connect(engBus);
+  else {
+    e.pan = actx.createPanner(); e.pan.panningModel = 'HRTF'; e.pan.distanceModel = 'inverse';
+    e.pan.refDistance = 7; e.pan.rolloffFactor = 1.4; e.pan.maxDistance = 400;
+    e.out.connect(e.pan); e.pan.connect(engBus);
+  }
+  engines.set(b, e); return e;
+}
+function killEngine(b) {
+  const e = engines.get(b); if (!e) return; engines.delete(b);
+  const t = actx.currentTime; e.out.gain.setTargetAtTime(0, t, 0.05);
+  setTimeout(() => { try { e.o.forEach(o => o.stop()); e.lfo.stop(); e.out.disconnect(); } catch (err) {} }, 400);
+}
+const setP = (p, v, t) => { if (p) p.setTargetAtTime(v, t, 0.04); };
 function updateAudio() {
   if (!actx) return;
-  const on = player && player.alive && (state === 'play' || state === 'countdown');
-  const sp = player ? player.speed : 0, f = 45 + sp * 1.7;
-  oscA.frequency.setTargetAtTime(f, actx.currentTime, 0.05);
-  oscB.frequency.setTargetAtTime(f * 1.008, actx.currentTime, 0.05);
-  filt.frequency.setTargetAtTime(400 + sp * 22, actx.currentTime, 0.05);
-  eGain.gain.setTargetAtTime(on ? 0.03 : 0, actx.currentTime, 0.1);
+  const t = actx.currentTime, racing = state === 'play' || state === 'countdown' || state === 'over';
+  // listener follows the camera
+  const L = actx.listener, fw = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+  if (L.positionX) { L.positionX.value = camWorld.x; L.positionY.value = camWorld.y; L.positionZ.value = camWorld.z;
+    L.forwardX.value = fw.x; L.forwardY.value = fw.y; L.forwardZ.value = fw.z; L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0; }
+  else { L.setPosition(camWorld.x, camWorld.y, camWorld.z); L.setOrientation(fw.x, fw.y, fw.z, 0, 1, 0); }
+  for (const b of bikes) {
+    const live = racing && b.alive && state !== 'menu' && b.points && (b.isPlayer || b.remote || b.ai);
+    let e = engines.get(b);
+    if (!live) { if (e) killEngine(b); continue; }
+    if (!e) e = makeEngine(b);
+    const f = (b.speed - MIN_V) / (MAX_V - MIN_V), base = (34 + b.speed * 1.75) * e.seed;
+    e.o.forEach(o => setP(o.frequency, base * o.mul, t));
+    setP(e.lfo.frequency, base * 0.5, t);
+    setP(e.filt.frequency, 280 + b.speed * 38, t);
+    setP(e.pre.gain, 0.45 + f * 0.6, t);
+    setP(e.out.gain, b.isPlayer ? 0.045 + f * 0.03 : 0.14 + f * 0.06, t);
+    if (e.pan) { const pp = e.pan; if (pp.positionX) { pp.positionX.value = b.pos.x; pp.positionY.value = 0.8; pp.positionZ.value = b.pos.y; } else pp.setPosition(b.pos.x, 0.8, b.pos.y); }
+  }
+  for (const [b] of engines) if (!bikes.includes(b)) killEngine(b);
 }
+
 
 
 // ---------- synthwave soundtrack (procedural) ----------
@@ -719,7 +766,8 @@ function playStep(st, t) {
   if (i === 0) for (const n of [...ch.c, ch.c[0] - 12]) voice(t, n, s16 * 16, { vol: race ? 0.022 : 0.03, att: 0.6, rel: 1.0, cutoff: race ? 1500 : 900, uni: 3, det: 16, rev: 0.7 });
   // relentless sequenced bass: 16ths, root with octave and fifth kicks
   const bp = [0, 0, 12, 0, 0, 12, 0, 7, 0, 0, 12, 0, 0, 12, 7, 12];
-  if (race) voice(t, ch.b + bp[i], s16 * 0.62, { vol: 0.13, rel: 0.03, cutoff: 380 + f * 1300 + (i % 4 === 0 ? 300 : 0), q: 9, uni: 2, det: 9 });
+  if (race) { voice(t, ch.b + bp[i], s16 * 0.55, { vol: 0.17, rel: 0.02, cutoff: 450 + f * 1500 + (i % 4 === 0 ? 500 : 0), q: 10, uni: 2, det: 9 });
+    if (i % 4 === 0) voice(t, ch.b - 12, s16 * 1.6, { type: 'sine', vol: 0.16, rel: 0.05 }); }
   else if (i % 4 === 0) voice(t, ch.b + 12, s16 * 1.5, { vol: 0.06, rel: 0.2, cutoff: 420, q: 5 });
   // shimmering arpeggio higher up
   const ar = [ch.c[0] + 12, ch.c[2], ch.c[1] + 12, ch.c[2] + 12];
@@ -728,13 +776,13 @@ function playStep(st, t) {
   if (race && bar % 2 === 0 && (i === 0 || i === 6 || i === 10)) stab(t, ch.c, 0.035);
   if (race && bar % 2 === 1 && i === 14) stab(t, ch.c.map(n => n + 2 > 80 ? n : n), 0.03);
   // soaring lead
-  if (race && sec >= 8 && sec < 24 && i % 2 === 0) { const n = LEAD[(sec - 8) % 8][i / 2];
+  if (race && sec >= 2 && sec < 26 && i % 2 === 0) { const n = LEAD[(sec - 2) % 8][i / 2];
     if (n) { glideLead(t, leadPrev, n, s16 * 3.2); leadPrev = n; } }
   if (sec % 8 === 0 && i === 0 && race) impact(t);
   // drums: four-on-the-floor kick, huge gated snare, driving hats, tom fills
   if (drums) {
     if (i % 4 === 0) kick(t);
-    if (race && (i === 4 || i === 12)) { noise(t, 0.28, 0.42, 'bandpass', 1500, 0.9); voice(t, 50, 0.07, { type: 'triangle', vol: 0.16, rel: 0.06 }); }
+    if (race && (i === 4 || i === 12)) { noise(t, 0.4, 0.62, 'bandpass', 1400, 1.2); noise(t, 0.12, 0.35, 'highpass', 3000, 0.6); voice(t, 48, 0.08, { type: 'triangle', vol: 0.22, rel: 0.08 }); }
     if (race) noise(t, i % 4 === 2 ? 0.1 : 0.035, i % 2 ? 0.05 : 0.08, 'highpass', 8000);
     if (race && bar % 4 === 3 && i >= 10 && i % 2 === 0) { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.setValueAtTime(220 - (i - 10) * 22, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.25);
       g.gain.setValueAtTime(0.28, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.connect(g); g.connect(mBus); const rv = actx.createGain(); rv.gain.value = 0.5; g.connect(rv); rv.connect(mRev); o.start(t); o.stop(t + 0.32); }
