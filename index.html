@@ -1153,7 +1153,7 @@ function drawHud() {
 }
 
 
-// ---------- two-player online (WebRTC via trystero, host-authoritative) ----------
+// ---------- two-player online (MQTT relay, host-authoritative) ----------
 let mode = 'solo', net = null, opp = null, oppTag = '', myTag = '', inLobby = false, lobby = {}, pendingTo = null, pendingFrom = null, rival = null;
 let tags = { blue: 'BLUE', red: 'RED' }, inpR = { a: false, b: false }, snapT = 0, rm = { me: false, them: false }, rmShown = false, lastIn = '';
 let myCol = 4, matchCols = [4, 0];
@@ -1178,17 +1178,46 @@ function localNet(handler) { // same-browser test transport: open the page with 
   addEventListener('beforeunload', () => bc.postMessage({ k: 'leave', from: id }));
   return { id, send: (d, to) => bc.postMessage({ k: 'm', from: id, to: to || null, d }), leave: () => bc.postMessage({ k: 'leave', from: id }) };
 }
+// Online transport: two public MQTT brokers over secure WebSockets (works through phone networks and firewalls).
+// Both devices connect out to the broker, so no direct device-to-device link is needed. Messages are sent via
+// every broker that's connected and de-duplicated on arrival.
+const MQ_BASE = 'simy-p/lightbikes/v2/';
+async function mqttNet(handler) {
+  const local = location.hash === '#mqttlocal';
+  const mod = await import('https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.esm.js');
+  const mqtt = mod.default && mod.default.connect ? mod.default : mod;
+  const id = Math.random().toString(36).slice(2, 10);
+  const urls = local ? ['ws://localhost:8883'] : ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
+  const clients = [], seen = new Set(); let seq = 0;
+  const onMsg = (topic, payload) => {
+    let m; try { m = JSON.parse(payload.toString()); } catch (e) { return; }
+    if (!m || m.f === id || (m.t && m.t !== id)) return;
+    const key = m.f + ':' + m.n; if (seen.has(key)) return; seen.add(key); if (seen.size > 5000) seen.clear();
+    if (m.k === 'join') handler({ type: 'join' }, m.f);
+    else if (m.k === 'leave') handler({ type: 'leave' }, m.f);
+    else handler(m.d, m.f);
+  };
+  await new Promise((res, rej) => {
+    let ok = false, failed = 0;
+    urls.forEach((u, i) => {
+      const c = mqtt.connect(u, { clientId: 'lb' + id + i, clean: true, connectTimeout: 8000, reconnectPeriod: 2500, keepalive: 30,
+        will: { topic: MQ_BASE + 'lobby', payload: JSON.stringify({ f: id, k: 'leave', n: 'will' + i }), qos: 0, retain: false } });
+      clients.push(c);
+      c.on('connect', () => { c.subscribe([MQ_BASE + 'lobby', MQ_BASE + 'to/' + id]); if (!ok) { ok = true; res(); } });
+      c.on('message', onMsg);
+      c.on('error', () => { if (++failed >= urls.length && !ok) rej(new Error('no broker')); });
+    });
+    setTimeout(() => { if (!ok) rej(new Error('timeout')); }, 12000);
+  });
+  const pub = (obj, to) => { const p = JSON.stringify(obj); for (const c of clients) if (c.connected) c.publish(to ? MQ_BASE + 'to/' + to : MQ_BASE + 'lobby', p); };
+  setTimeout(() => pub({ f: id, k: 'join', n: seq++ }), 300); // after subscriptions settle
+  addEventListener('beforeunload', () => pub({ f: id, k: 'leave', n: seq++ }));
+  return { id, send: (d, to) => pub({ f: id, t: to || null, d, n: seq++ }, to), leave: () => { pub({ f: id, k: 'leave', n: seq++ }); clients.forEach(c => c.end()); } };
+}
 async function connectNet() {
   if (net) return net;
   const handler = (m, peer) => { try { onNet(m, peer); } catch (e) { console.error(e); } };
-  if (location.hash === '#local') { net = localNet(handler); return net; }
-  const T = await import('https://cdn.jsdelivr.net/npm/trystero@0.21.8/+esm');
-  const room = T.joinRoom({ appId: 'simy-p.github.io/LightBikes' }, 'lobby-v1');
-  const [snd, rcv] = room.makeAction('m');
-  rcv((d, p) => handler(d, p));
-  room.onPeerJoin(p => handler({ type: 'join' }, p));
-  room.onPeerLeave(p => handler({ type: 'leave' }, p));
-  net = { id: T.selfId, send: (d, to) => to ? snd(d, to) : snd(d), leave: () => room.leave() };
+  net = location.hash === '#local' ? localNet(handler) : await mqttNet(handler);
   return net;
 }
 const isBusy = () => !inLobby || mode !== 'solo' || !!pendingTo || !!pendingFrom;
