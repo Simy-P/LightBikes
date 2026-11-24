@@ -4,7 +4,10 @@ A Poland & Claude Production. Neon light-cycle game for the browser, phones and 
 
 **Play:** https://simy-p.github.io/LightBikes/
 
-- **1 player:** 10 levels, Easy / Normal / Hard, gold pickups that wipe every trail off the grid.
+- **1 player:** 10 levels with their own arenas (pillars, walls, a cross, scatter fields, and grids that shrink), Easy / Normal / Hard, smarter red riders as you climb, and a minimum speed that rises each level.
+- **Boost:** ride close beside any trail or wall to charge it, then fire it (Shift/E, ⚡ on touch, A/X in VR).
+- **Jump ramps:** glowing green pads launch you over trails and blocks; you leave no trail while airborne.
+- **Gold pickups** wipe every trail off the grid.
 - **2 player online:** pick one of 7 colours and a bike tag, enter the lobby, tap a rider to challenge them. Matches are best of 5 (first to 3 rounds); the challenger hosts, and both riders must agree to a rematch.
 
 ## Plays
