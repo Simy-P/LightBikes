@@ -1264,8 +1264,9 @@ function readXR() {
     const pr = i => !!(gp.buttons[i] && gp.buttons[i].pressed), edge = i => pr(i) && !st.prev[i];
     if (edge(1)) doTurn(h === 'left' ? -1 : 1);
     if (edge(5)) toggleCam();
-    if (edge(4)) { if (state === 'play') doBoost(); else requestRestart(); }
-    if (edge(0)) requestRestart();
+    // while the menu panel is up, buttons only aim and select on the panel (otherwise the trigger restarted the race before MENU got the click)
+    if (edge(4)) { if (state === 'play') doBoost(); else if (!vPanel.visible) requestRestart(); }
+    if (edge(0) && !vPanel.visible) requestRestart();
     for (let i = 0; i < gp.buttons.length; i++) st.prev[i] = pr(i);
   }
 }
@@ -1840,7 +1841,7 @@ function loop() {
       } else if (mode !== 'solo') { if (overT > 1.2 && !rmShown) showRematch(); else if (overT > 1.2 && !subText) updRematch(); }
       else {
         if (overT > 1.0 && !subText) setMsg(msgText, (overInfo ? overInfo + ' · ' : '') + (isTouch ? 'tap to go' : (xr ? 'press A' : 'Space or click')), msgColor);
-        if (overT > 7) startRound();
+        if (overT > 7 && !xr) startRound(); // in VR the panel offers RACE AGAIN / MENU instead
       }
     }
   }
