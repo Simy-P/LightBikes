@@ -790,7 +790,7 @@ class Bike {
     if (!this.alive || this.boosting || this.boost < 0.2) return;
     this.boosting = true; if (this.isPlayer) sfxBoost();
   }
-  takeoff() { // leave the ground: end the trail here; the stretch until landing is a gap
+  takeoff() { this.goal = null; // leave the ground: end the trail here; the stretch until landing is a gap
     const n = this.points.length;
     this.setSeg(this.segs[n - 1], this.points[n - 1], this.pos.x, this.pos.y);
     this.points.push(this.pos.clone()); this.newSeg();
@@ -808,10 +808,54 @@ class Bike {
     parts.push({ m: ring, mat: ring.material, ring: true, life: 0.7, v: new THREE.Vector3() });
     sendPts(this);
   }
-  space(px, pz, d) { // how much room lies in direction d: the straight run plus what opens up beyond it
+  // ---- rider intelligence: space, ramps, reset pickups ----
+  rampOn(px, pz, d, maxD) { // nearest jump ramp lying on the path ahead (within maxD), or -1
+    let best = -1;
+    for (const r of ramps) { const rx = r.pos.x - px, rz = r.pos.y - pz, f = rx * d[0] + rz * d[1], l = Math.abs(rx * d[1] - rz * d[0]);
+      if (f > 1 && f < maxD && l < 3.8 && (best < 0 || f < best)) best = f; }
+    return best;
+  }
+  landingSafe(px, pz, d, rampD) { // would a jump from the ramp ahead come down somewhere survivable?
+    const air = (1.05 + this.speed * 0.006) * this.speed, rx = px + d[0] * rampD, rz = pz + d[1] * rampD;
+    const lx = rx + d[0] * air, lz = rz + d[1] * air;
+    return wallDist(rx, rz, d[0], d[1]) > air + 10 && !inBlock(lx, lz, 6) && rayDist(lx, lz, d[0], d[1]) > 8;
+  }
+  space(px, pz, d) { // how much room lies in direction d: the straight run plus what opens up beyond it (a usable ramp counts as room)
     const run = rayDist(px, pz, d[0], d[1]); if (run < 3) return run;
     const s = Math.min(run - 2, 25), qx = px + d[0] * s, qz = pz + d[1] * s;
-    return Math.min(run, 160) + 0.5 * (Math.min(rayDist(qx, qz, d[1], -d[0]), 120) + Math.min(rayDist(qx, qz, -d[1], d[0]), 120));
+    let v = Math.min(run, 160) + 0.5 * (Math.min(rayDist(qx, qz, d[1], -d[0]), 120) + Math.min(rayDist(qx, qz, -d[1], d[0]), 120));
+    if (this.ai && this.ai.wits > 0) { const rd = this.rampOn(px, pz, d, run - 0.5); if (rd > 0 && this.landingSafe(px, pz, d, rd)) v += 90; }
+    return v;
+  }
+  roomAround(px, pz, d) { const L = [d[1], -d[0]], R = [-d[1], d[0]]; return Math.max(this.space(px, pz, d), this.space(px, pz, L), this.space(px, pz, R)); }
+  navTo(tx, tz) { // grid navigation: run along one axis until lined up with the goal, then turn onto it
+    const [dx, dz] = this.dir, L = [dz, -dx], R = [-dz, dx], px = this.pos.x, pz = this.pos.y;
+    const rx = tx - px, rz = tz - pz, fwd = rx * dx + rz * dz, lat = rx * R[0] + rz * R[1];
+    if (Math.abs(lat) < 2.5 && fwd > 0) return false; // lined up: keep going
+    if (fwd < 3) { // level with it or past it: turn towards it
+      let sd = lat > 0.5 ? 1 : lat < -0.5 ? -1 : (this.space(px, pz, R) > this.space(px, pz, L) ? 1 : -1);
+      const v = sd > 0 ? R : L;
+      if (rayDist(px, pz, v[0], v[1]) > Math.min(Math.abs(lat) + 6, 30)) { this.turn(sd); return true; }
+      if (fwd < -3) { const w = sd > 0 ? L : R; if (rayDist(px, pz, w[0], w[1]) > 30) { this.turn(-sd); return true; } } // goal behind and near side blocked: loop round the other way
+    }
+    return false;
+  }
+  pickGoal(A, px, pz) {
+    this.goal = null;
+    if (A.wits <= 0) return;
+    const myRoom = this.roomAround(px, pz, this.dir), cramped = myRoom < 170;
+    const youRoom = player && player.alive ? this.roomAround(player.pos.x, player.pos.y, player.dir) : 999;
+    const pk = pickups.filter(p => p.live).map(p => ({ p, d: Math.hypot(p.pos.x - px, p.pos.y - pz) })).sort((a, b) => a.d - b.d)[0];
+    // reset pickups: a lifeline when boxed in — but don't wipe the grid if that would rescue a trapped player
+    if (pk && !(youRoom < 120 && !cramped)) {
+      const want = cramped ? 0.5 + A.wits * 0.45 : A.wits * 0.6;
+      if (pk.d < (cramped ? 260 : 170) && Math.random() < want) { this.goal = { x: pk.p.pos.x, z: pk.p.pos.y, pk: pk.p, t: 8 }; return; }
+    }
+    // jump ramps: an escape route over the walls of light when space runs out
+    if (cramped && ramps.length) {
+      const r = ramps.map(r => ({ r, d: Math.hypot(r.pos.x - px, r.pos.y - pz) })).sort((a, b) => a.d - b.d)[0];
+      if (r.d < 180 && Math.random() < 0.4 + A.wits * 0.6) this.goal = { x: r.r.pos.x, z: r.r.pos.y, ramp: true, t: 10 };
+    }
   }
   think(dt) {
     if (this.air) return;
@@ -819,7 +863,10 @@ class Bike {
     const px = this.pos.x, pz = this.pos.y;
     const A = this.ai, look = this.speed * A.look + 3;
     const ahead = rayDist(px, pz, dx, dz);
+    const rampD = A.wits > 0 ? this.rampOn(px, pz, this.dir, Math.min(ahead - 0.5, 200)) : -1;
+    const rampOk = rampD > 0 && this.landingSafe(px, pz, this.dir, rampD);
     if (ahead < look) {
+      if (rampOk) return; // a ramp sits before the obstacle: ride at it and jump over
       if (this.miss === undefined) this.miss = Math.random() < A.mistake;
       if (this.miss) return;
       if (A.smart > 0.2) { const sl = this.space(px, pz, L), sr = this.space(px, pz, R); if (Math.max(sl, sr) > 2) this.turn(sl > sr ? -1 : 1); return; }
@@ -828,26 +875,35 @@ class Bike {
       return;
     }
     this.miss = undefined;
+    // a ramp coming up whose landing is deadly: steer round it
+    if (rampD > 0 && !rampOk && rampD < look * 1.6) { const sl = this.space(px, pz, L), sr = this.space(px, pz, R); if (Math.max(sl, sr) > 25) { this.turn(sl > sr ? -1 : 1); return; } }
+    // heading for a goal (reset pickup or escape ramp)
+    if (this.goal) {
+      this.goal.t -= dt;
+      const gone = this.goal.pk && !this.goal.pk.live, reached = !this.goal.ramp && Math.hypot(this.goal.x - px, this.goal.z - pz) < 4;
+      if (gone || reached || this.goal.t <= 0) this.goal = null;
+      else { if (this.goal.pk && this.boost > 0.5 && Math.random() < A.smart * dt * 2) this.fireBoost(); if (this.navTo(this.goal.x, this.goal.z)) return; }
+    }
     // smart riders: cut across your path when they're alongside and ahead of you
     if (A.smart > 0 && player && player.alive && !player.air) {
       const pd = player.dir, pr = [-pd[1], pd[0]], rx = px - player.pos.x, rz = pz - player.pos.y;
       const along = rx * pd[0] + rz * pd[1], lat = rx * pr[0] + rz * pr[1];
       if (dx === pd[0] && dz === pd[1] && along > 12 && along < 30 + player.speed * 0.9 && Math.abs(lat) > 5 && Math.abs(lat) < 55 && Math.random() < A.smart * dt * 3) {
         const want = lat > 0 ? [-pr[0], -pr[1]] : pr, s = (want[0] === R[0] && want[1] === R[1]) ? 1 : -1;
-        if (rayDist(px, pz, want[0], want[1]) > Math.abs(lat) + 8) { this.turn(s); if (this.boost > 0.3) this.fireBoost(); return; }
+        if (rayDist(px, pz, want[0], want[1]) > Math.abs(lat) + 8) { this.goal = null; this.turn(s); if (this.boost > 0.3) this.fireBoost(); return; }
       }
       if (this.boost > 0.6 && Math.random() < A.smart * dt * 0.6) this.fireBoost();
     }
     // smart riders steer early away from dead ends
-    if (A.smart > 0.2 && ahead < 60) { const sa = this.space(px, pz, this.dir), sl = this.space(px, pz, L), sr = this.space(px, pz, R);
+    if (A.smart > 0.2 && ahead < 60 && !rampOk) { const sa = this.space(px, pz, this.dir), sl = this.space(px, pz, L), sr = this.space(px, pz, R);
       if (sa < 50 && Math.max(sl, sr) > sa * 1.8) { this.turn(sl > sr ? -1 : 1); return; } }
     this.rand -= dt;
     if (this.rand > 0) return;
     this.rand = A.calm + Math.random() * 2.2;
+    if (!this.goal) this.pickGoal(A, px, pz);
+    if (this.goal) { this.target = Math.min(MAX_V, A.v * 1.15); return; }
     let tx = (Math.random() - 0.5) * AH * 1.6, tz = (Math.random() - 0.5) * AH * 1.6;
-    const pk = A.smart > 0.3 ? pickups.filter(p => p.live).sort((a, b) => Math.hypot(a.pos.x - px, a.pos.y - pz) - Math.hypot(b.pos.x - px, b.pos.y - pz))[0] : null;
-    if (pk && Math.hypot(pk.pos.x - px, pk.pos.y - pz) < 160 && Math.random() < A.smart) { tx = pk.pos.x; tz = pk.pos.y; } // race you for the gold
-    else if (player && player.alive && Math.random() < A.aggr) { tx = player.pos.x + player.dir[0] * player.speed * 0.9; tz = player.pos.y + player.dir[1] * player.speed * 0.9; }
+    if (player && player.alive && Math.random() < A.aggr) { tx = player.pos.x + player.dir[0] * player.speed * 0.9; tz = player.pos.y + player.dir[1] * player.speed * 0.9; }
     const rx = tx - px, rz = tz - pz, fwd = rx * dx + rz * dz, side = rx * R[0] + rz * R[1];
     if (Math.random() < 0.35 + A.aggr * 0.4 && Math.abs(side) > 10) {
       const s = side > 0 ? 1 : -1, v = s > 0 ? R : L;
@@ -1153,7 +1209,7 @@ function saveProg() { try { localStorage.setItem('lb_best', best); localStorage.
 function aiCfg(L) {
   const d = DIFF[diff];
   return { v: (28 + L * 4) * d.v, aggr: Math.min(0.9, (L - 1) / 11 * d.a), mistake: Math.max(0, Math.min(0.4, 0.22 - L * 0.03 + d.m)),
-           look: 0.28 + 0.02 * L, calm: Math.max(0.5, 2.6 - L * 0.22), smart: Math.max(0, Math.min(1, (L - 3) / 7 * d.a)) };
+           look: 0.28 + 0.02 * L, calm: Math.max(0.5, 2.6 - L * 0.22), smart: Math.max(0, Math.min(1, (L - 3) / 7 * d.a)), wits: Math.max(0, Math.min(1, (L - 1) / 6 * d.a)) };
 }
 // minimum speed per level: level 1 has no floor; by level 10 you can't drop below the starting speed
 const startV = L => Math.min(45, 28 + L * 2);
